@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"bitbucket.org/rtg365/rdk/errors"
+	"github.com/axkit/errors"
 	"github.com/rs/zerolog"
 )
 
