@@ -31,11 +31,23 @@ func WriteJSON(w io.Writer, src interface{}) error {
 func Div(a, b int) (int, error) {
 
     if b == 0 {
-        return 0, errors.New("divizion by zero").Critica().SetPairs("a", a )
+        return 0, errors.New("divizion by zero").Critica().SetPairs("a", a)
     }
 
     return a/b, nil
 }
 
+func (srv *CustomerService)CustomerByID(id int) (*Customer, error) {
+
+    c, ok := srv.repo.CustomerByID(id)
+    if !ok {
+        return nil, errors.New("customer not found").Critical().Set("id", id).StatusCode(404)
+    }
+
+    return c, nil
+}
+
 
 ```
+
+Prague 2020
