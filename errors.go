@@ -1,123 +1,151 @@
 package errors
 
 import (
-	"database/sql"
-
-	"github.com/rs/zerolog"
+	"runtime"
 )
 
-// SeverityLevel описывает уровень серьезности ошибки.
+// CaptureStackStopWord captures stack till the function name
+// has not contains CaptureStackStopWord
+//
+// The stack capturing ignored if it's empty or it's appeared
+// in the first function name.
+var CaptureStackStopWord string
+
+// Mode describes allowed methods of response returned Error().
+type Mode int
+
+const (
+	// Multi return all error messages separated by ": ".
+	Multi Mode = 0
+
+	// Single return message of last error in the stack.
+	Single Mode = 1
+)
+
+// ErrorMethodMode holds behavior of Error() method.
+var ErrorMethodMode = Single
+
+// SeverityLevel describes error severity levels.
 type SeverityLevel int
 
 const (
-	// Tiny классифицирует ожидаемые, возможные ошибки, не требующие привлечения внимания администратора.
-	// В журнал не пишется стек вызовов функций. Пример: ошибка валидации введенных полей формы.
+	// Tiny classifies as expected, managed errors that do not require administrator attention.
+	// It's not recommended to write a call stack to the journal file.
+	//
+	// Example: error related to validation of entered form fields.
 	Tiny SeverityLevel = iota
 
-	// Medium классифицируют ошибку средней категории, требующее регистрации в специальном журнале и/или
-	// отображения на дашборде. В журнал пишется стек вызовов функций.
+	// Medium classifies an regular error. A call stack is written to the log.
 	Medium
 
-	// Critical классифицирует критическую ошибку, информация о возникновении подобной ошибки должна немедленно
-	// передаваться администратору всеми возможными доступными способами. В журнал пишется стек вызовов функций.
+	// Critical classifies a significant error, requiring immediate attention.
+	// An error occurrence fact shall be passed to the administrator in all possible ways.
+	// A call stack is written to the log.
 	Critical
 )
 
-// String возвращает строковое представление уровня серьезности ошибки. В английском языке
+var (
+	tiny     = []byte(`"tiny"`)
+	medium   = []byte(`"medium"`)
+	critical = []byte(`"critical"`)
+	unknown  = []byte(`"unknown"`)
+)
+
+const (
+	stiny     = "tiny"
+	smedium   = "medium"
+	scritical = "critical"
+	sunknown  = "unknown"
+)
+
+// String returns severity level string representation.
 func (sl SeverityLevel) String() string {
 	switch sl {
 	case Tiny:
-		return "tiny"
+		return stiny
 	case Medium:
-		return "medium"
+		return smedium
 	case Critical:
-		return "critical"
+		return scritical
 	}
-	return "unknown"
+	return sunknown
 }
 
-// Error описывает интерфейс враппера ошибок. Прозрачная замена для пакета errors из стандартной библиотеки.
-type Error interface {
-
-	// Set привязывает ключ/значение к ошибке.
-	Set(key string, val interface{}) Error
-
-	// SetPairs привязывает несколько пар ключ/значение к ошибке. Количество параметров должно быть кратное двум.
-	// где нечетный имеет тип строку: название ключа, второй значение любого типа.
-	SetPairs(kvpairs ...interface{}) Error
-
-	// SetMulti принимает ключ и список значений. Преимущественно для привязки параметров SQL запроса.
-	SetMulti(key string, vals ...interface{}) Error
-
-	Get(key string) (interface{}, bool)
-	SetSeverity(SeverityLevel) Error
-	SetStatusCode(int) Error
-	SetCode(string) Error
-
-	// Msg устанавливает текст ошибки.
-	Msg(string) Error
-
-	// Error обеспечивает совместимость с error.
-	Error() string
-
-	// Children возвращает дочерние ошибки. Текущая ошибка в массив не попадает!
-	Children() []Error
-
-	Protect() Error
-
-	Log(*zerolog.Logger) Error
+// MarshalJSON implements json/Marsaller interface.
+func (sl SeverityLevel) MarshalJSON() ([]byte, error) {
+	switch sl {
+	case Tiny:
+		return tiny, nil
+	case Medium:
+		return medium, nil
+	case Critical:
+		return critical, nil
+	}
+	return unknown, nil
 }
 
-type IsNotFounder interface {
-	IsNotFound() bool
+// Frame describes content of a single stack frame stored with error.
+type Frame struct {
+	Function string `json:"function"`
+	File     string `json:"file"`
+	Line     int    `json:"line"`
 }
 
-// IsNotFound возвращает true если ошибка связана с отсутствием данных.
-// Если err == nil, возвращает false. Для ошибки sql.ErrNoRows возвращает true.
-func IsNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
+var (
+	// DefaultCallerFramesFunc holds default function used by function Catch()
+	// to collect call frames.
+	DefaultCallerFramesFunc func(offset int) []Frame = CallerFrames
 
-	if err == sql.ErrNoRows {
-		return true
-	}
+	// CallingStackMaxLen holds maximum elements in the call frames.
+	CallingStackMaxLen int = 15
+)
 
-	if nferr, ok := err.(IsNotFounder); ok {
-		return nferr.IsNotFound()
+// CallerFrames returns not more then slice of Frame.
+func CallerFrames(offset int) []Frame {
+	var res []Frame
+	pc := make([]uintptr, CallingStackMaxLen)
+	n := runtime.Callers(3+offset, pc)
+	frames := runtime.CallersFrames(pc[:n])
+
+	for {
+		frame, more := frames.Next()
+		res = append(res, Frame{Function: frame.Function, File: frame.File, Line: frame.Line})
+		if !more {
+			break
+		}
 	}
-	return false
+	return res
 }
 
 // NotFound объект не найден.
-var NotFound = func(msg string) Error {
-	return newx(msg).SetStatusCode(404).SetCode("RDK-0404").SetSeverity(Medium)
+var NotFound = func(msg string) *CatchedError {
+	return newx(msg).StatusCode(404).Severity(Medium)
 }
 
-var ValidationFailed = func(msg string) Error {
-	return newx(msg).SetStatusCode(400).SetCode("RDK-0400").SetSeverity(Tiny)
+var ValidationFailed = func(msg string) *CatchedError {
+	return newx(msg).StatusCode(400).Severity(Tiny)
 }
 
-var ConsistencyFailed = func() Error {
-	return newx("consistency failed").SetStatusCode(500).SetSeverity(Critical)
+var ConsistencyFailed = func() *CatchedError {
+	return newx("consistency failed").StatusCode(500).Severity(Critical)
 }
 
-var InvalidRequestBody = func(s string) Error {
-	return newx(s).SetStatusCode(400).SetSeverity(Critical)
+var InvalidRequestBody = func(s string) *CatchedError {
+	return newx(s).StatusCode(400).Severity(Critical)
 }
 
-var Unauthorized = func() Error {
-	return newx("unauthorized").SetStatusCode(401).SetSeverity(Medium)
+var Unauthorized = func() *CatchedError {
+	return newx("unauthorized").StatusCode(401).Severity(Medium)
 }
 
-var Forbidden = func() Error {
-	return newx("forbidden").SetStatusCode(403).SetSeverity(Critical)
+var Forbidden = func() *CatchedError {
+	return newx("forbidden").StatusCode(403).Severity(Critical)
 }
 
-var InternalError = func() Error {
-	return newx("internal error").SetStatusCode(500).SetSeverity(Critical)
+var InternalError = func() *CatchedError {
+	return newx("internal error").StatusCode(500).Severity(Critical)
 }
 
-var UnprocessableEntity = func(s string) Error {
-	return newx(s).SetStatusCode(422).SetSeverity(Medium)
+var UnprocessableEntity = func(s string) *CatchedError {
+	return newx(s).StatusCode(422).Severity(Medium)
 }

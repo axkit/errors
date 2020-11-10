@@ -1,59 +1,41 @@
-# errors
+# errors [![GoDoc](https://godoc.org/github.com/axkit/errors?status.svg)](https://godoc.org/github.com/axkit/errors) [![Build Status](https://travis-ci.org/axkit/errors.svg?branch=master)](https://travis-ci.org/axkit/errors) [![Coverage Status](https://coveralls.io/repos/github/errors/gonfig/badge.svg)](https://coveralls.io/github/axkit/errors) [![Go Report Card](https://goreportcard.com/badge/github.com/axkit/errors)](https://goreportcard.com/report/github.com/axkit/errors)
 
-Drop in replacement for https://golang.org/pkg/errors/ and https://github.com/pkg/errors
+Enterprise approach of error handling
 
-# Обработка и доставка ошибок
+# Goals
 
-## Какую проблему решаем?
+- Capture stack at once in the begining.
+- Enhance error with key/value pairs, later to be written into structurized log.
+- Enhance error with the code, what can be refered in documentation. (i.g. ORA-0600 in Oracle).
+- Enhance error with severity level.
+- Ability of drill down to the wrapped errors.
+- Chaining.
 
-- рассчитывать на наличие докера и связанного с ним подхода "без стейта"
-- рассчитывать на отсутствие докера и возможность использования "стейта"
-
-* наличие у каждой ошибки уникального буквенно-цифрового кода, на который можно ссылаться в документации.
-* возможность оборачивать системные ошибки (нижнего уровня) в ошибки более высокого порядка. Без ограничении уровней.
-* предоставить пользователю возможость погружения (drill-down) в иерархию ошибок.
-* уметь какие то ошибки писать в журнал, какие то немедленно отправлять администратору, о каких то уведомлять пользователю без доп. действий на стороне сервера.
-
-- иметь возможность изменять поведение при появлении ошибки. Например на этапе внедрения, все ошибки пишутся в журнал и немедленно приходит уведомление администратору.
-- ошибку, захватывать в момент возникновения. Всегда передавать наверх, на каждом следующем уровне оборачивать ее и записывать в журнал в точке выхода.
-- если из функции мы не выходим, но с ошибкой столкнулись, пишем ее в журнал немедленно и продолжаем работу функции.
-- Возможность увидеть цепочку ошибок связанных с одним запросом клиента.
-- сообщение об ошибке, должно быть максимально полезным для локализации проблемы, а так же автоматизированной обработки. Ошибка - это объект, следовательно в дополнительных атрибутах, должна быть информация упрощающая локализацию проблемы.
-- Готовность к мультиязычности.
-- Возможность работы с разными системами
-- Прозрачную замену для пакета errors из стандартной библиотеки.
-
-* sgfdgf
-* f sdf
-* sdfsdf
-
-## Прицнипы регистрации и обработки ошибок
-
-- контроллер->бизнес логика->репозитарий
-- бизнес логика->репозитарий
-- бизнес логика
-
-## Прицнипы регистрации и обработки ошибок
+## Usage
 
 ```
-    {
-        "code" : "LMS-0012",
-        "message" : "Ошибка создания профиля освещения",
-        "severity" : "critical",
-        "status_code": 500,
-        "previous" :[
-                        {
-                            "code": "DBW-0001",
-                            "message" : "insert failed"
-                            "fields" : {"table" : "lighting_profiles", "sql": "insert into ....", "params":"1, 21, 2121"}
-                            "severity" : "critical",
-                            "status_code": 500
-                        },
-                        {
-                            "message" : "unique contraint violation",
-                            "fields" : {"constraint" : "lighting_profile_uk", "sql_code": 25111}
-                            "severity" : "critical"
-                       }
-                    ]
+import (
+    "github.com/axkit/errors"
+)
+
+func WriteJSON(w io.Writer, src interface{}) error {
+
+    buf, err := json.Marshal(src)
+    if err != nil {
+        return errors.Catch(err).Critical().Set("obj", src).StatusCode(500)
     }
+    return nil
+}
+
+
+func Div(a, b int) (int, error) {
+
+    if b == 0 {
+        return 0, errors.New("divizion by zero").Critica().SetPairs("a", a )
+    }
+
+    return a/b, nil
+}
+
+
 ```
