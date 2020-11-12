@@ -1,32 +1,31 @@
-package errors_test
+package errors
 
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"testing"
-
-	"github.com/axkit/errors"
 )
 
 func f() {
-	e := errors.New("invalid rules")
+	e := New("invalid rules")
 	fmt.Println("e.Error()=", e.Error(), e.Len())
 
-	es := errors.Catch(e).Msg("end of file reached").Set("file", "config.json").Severity(errors.Critical)
+	es := Catch(e).Msg("end of file reached").Set("file", "config.json").Severity(Critical)
 	fmt.Println("es.Error()=", es.Error(), e.Len())
 
-	ess := errors.Catch(es).Msg("processing failed").Set("process", "billing")
+	ess := Catch(es).Msg("processing failed").Set("process", "billing")
 	fmt.Println("ess.Error()=", ess.Error(), e.Len())
 
-	errors.ErrorMethodMode = errors.Multi
+	ErrorMethodMode = Multi
 	fmt.Println("ess.Error()=", ess.Error(), ess.GetDefault("file", ""), e.Len())
 
 	//fmt.Println(ess.Err())
 
-	errors.ErrorMethodMode = errors.Single
+	ErrorMethodMode = Single
 
-	js := errors.Catch(es).Msg("file reading error")
+	js := Catch(es).Msg("file reading error")
 	fmt.Println("js.Error()=", js.Error())
 
 	//fmt.Println(js.Log())
@@ -42,12 +41,12 @@ func f() {
 func TestSeverityLevel_MarshalJSON(t *testing.T) {
 
 	tc := []struct {
-		level    errors.SeverityLevel
+		level    SeverityLevel
 		expected []byte
 	}{
-		{level: errors.Tiny, expected: []byte(`"tiny"`)},
-		{level: errors.Medium, expected: []byte(`"medium"`)},
-		{level: errors.Critical, expected: []byte(`"critical"`)},
+		{level: Tiny, expected: []byte(`"tiny"`)},
+		{level: Medium, expected: []byte(`"medium"`)},
+		{level: Critical, expected: []byte(`"critical"`)},
 		{level: 15, expected: []byte(`"unknown"`)},
 	}
 
@@ -64,12 +63,12 @@ func TestSeverityLevel_MarshalJSON(t *testing.T) {
 
 func BenchmarkSeverityLevel_MarshalJSON(b *testing.B) {
 	tc := []struct {
-		level    errors.SeverityLevel
+		level    SeverityLevel
 		expected []byte
 	}{
-		{level: errors.Tiny, expected: []byte(`"tiny"`)},
-		{level: errors.Medium, expected: []byte(`"medium"`)},
-		{level: errors.Critical, expected: []byte(`"critical"`)},
+		{level: Tiny, expected: []byte(`"tiny"`)},
+		{level: Medium, expected: []byte(`"medium"`)},
+		{level: Critical, expected: []byte(`"critical"`)},
 		{level: 15, expected: []byte(`"unknown"`)},
 	}
 
@@ -84,4 +83,52 @@ func BenchmarkSeverityLevel_MarshalJSON(b *testing.B) {
 		}
 		_ = len(buf)
 	}
+}
+
+func TestCatchedError_Strs(t *testing.T) {
+
+	msg := []string{"original/protected", "intermediate", "user faced"}
+
+	err1 := New(msg[0]).Protect()
+	err2 := Catch(err1).Msg(msg[1]).StatusCode(401)
+	err3 := Catch(err2).Msg(msg[2])
+
+	{
+		s := err3.Strs(false)
+		exp := []string{msg[1], msg[0]}
+		if !deepEqual(exp, s) {
+			t.Errorf("#1 failed. expected %v, got %v", exp, s)
+		}
+	}
+	{
+		s := err3.Strs(true)
+		exp := []string{msg[1]}
+		if !deepEqual(exp, s) {
+			t.Errorf("#2 failed. expected %v, got %v", exp, s)
+		}
+	}
+
+}
+
+func deepEqual(s1, s2 []string) bool {
+	if len(s1) != len(s2) {
+		return false
+	}
+
+	for i := range s1 {
+		if s1[i] != s2[i] {
+			return false
+		}
+	}
+	return true
+}
+func TestCatchedError_Msg(t *testing.T) {
+
+	msg := "end of file"
+	err := Catch(io.ErrUnexpectedEOF).Msg(msg)
+
+	if s := err.Last().Message; s != msg {
+		t.Errorf("test failed, expected %s, got %s", msg, s)
+	}
+
 }

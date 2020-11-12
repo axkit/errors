@@ -25,7 +25,8 @@ type WrappedError struct {
 	Protected bool `json:"-"`
 
 	// err is wrapped original error.
-	err error
+	err               error
+	isMessageReplaced bool
 }
 
 // Error implements standard Error interface.
@@ -66,7 +67,7 @@ func NewCritical(msg string) *CatchedError {
 }
 
 func newx(msg string) *CatchedError {
-	return &CatchedError{lasterr: WrappedError{Message: msg}, Frames: DefaultCallerFramesFunc(1)}
+	return &CatchedError{lasterr: WrappedError{Message: msg, isMessageReplaced: true}, Frames: DefaultCallerFramesFunc(1)}
 }
 
 // Catch wraps an error with capturing stack at the point of calling.
@@ -89,7 +90,7 @@ func CatchCustom(err error, stackcapture func() []Frame) *CatchedError {
 		return nil
 	}
 
-	return &CatchedError{lasterr: WrappedError{Message: err.Error(), err: err}, Frames: stackcapture()}
+	return &CatchedError{lasterr: WrappedError{Message: err.Error(), err: err, isMessageReplaced: true}, Frames: stackcapture()}
 }
 
 func catch(err error, callerOffset int) *CatchedError {
@@ -97,10 +98,18 @@ func catch(err error, callerOffset int) *CatchedError {
 	if ce, ok := err.(*CatchedError); ok {
 		ce.werrs = append(ce.werrs, ce.lasterr)
 		ce.lasterr.Protected = false
+		ce.lasterr.isMessageReplaced = false
 		return ce
 	}
 
-	return &CatchedError{lasterr: WrappedError{Message: err.Error(), err: err}, Frames: DefaultCallerFramesFunc(callerOffset)}
+	return &CatchedError{
+		lasterr: WrappedError{
+			Message:           err.Error(),
+			err:               err,
+			isMessageReplaced: true,
+		},
+		Frames: DefaultCallerFramesFunc(callerOffset),
+	}
 }
 
 // Msg replaces error message.
@@ -109,6 +118,7 @@ func (ce *CatchedError) Msg(s string) *CatchedError {
 		return nil
 	}
 	ce.lasterr.Message = s
+	ce.lasterr.isMessageReplaced = true
 	return ce
 }
 
@@ -151,15 +161,19 @@ func (ce CatchedError) Error() string {
 	return res
 }
 
-// Strs returns error messages as a slice of strings.
-func (ce *CatchedError) Strs(exceptLast bool) []string {
-	res := make([]string, 0, ce.Len())
-	if !exceptLast {
-		res = append(res, ce.lasterr.Message)
+// Strs returns error messages of wrapped errors except last message and empty messages.
+func (ce *CatchedError) Strs(exceptProtected bool) []string {
+	if len(ce.werrs) == 0 {
+		return nil
 	}
 
+	res := make([]string, 0, len(ce.werrs))
+
 	for i := len(ce.werrs) - 1; i >= 0; i-- {
-		if msg := ce.werrs[i].Message; msg != "" {
+		if ce.werrs[i].Protected && exceptProtected {
+			continue
+		}
+		if msg := ce.werrs[i].Message; msg != "" && ce.werrs[i].isMessageReplaced {
 			res = append(res, msg)
 		}
 	}
