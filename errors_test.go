@@ -132,3 +132,12 @@ func TestCatchedError_Msg(t *testing.T) {
 	}
 
 }
+func TestCatchedError_JSON(t *testing.T) {
+
+	msg := "end of file"
+	err := Catch(io.ErrUnexpectedEOF).Msg(msg)
+
+	t.Log(string(JSON(err)))
+
+	t.Log(string(JSON(io.ErrUnexpectedEOF)))
+}

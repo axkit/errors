@@ -3,6 +3,7 @@ package errors
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // WrappedError is a structure defining wrapped error.
@@ -363,4 +364,70 @@ func (ce *CatchedError) IsNotFound() bool {
 	}
 
 	return (ce.lasterr.StatusCode == 404) && (ce.lasterr.Message == "not found")
+}
+
+type Eventer interface {
+	Str(key, val string) Eventer
+	Strs(key string, vals []string) Eventer
+	Fields(map[string]interface{}) Eventer
+	Int(string, int) Eventer
+}
+
+// JSON returns JSON object if err is CatchedError or quoted string if not.
+func JSON(err error) []byte {
+	if err == nil {
+		return nil
+	}
+
+	ce, ok := err.(*CatchedError)
+	if !ok {
+		return []byte(`"` + err.Error() + `"`)
+	}
+
+	res := "{"
+	res += fmt.Sprintf(`"severity":"%s"`, ce.Last().Severity.String())
+
+	if ce.Last().Code != "" {
+		res += fmt.Sprintf(`,"errcode":"%s"`, ce.Last().Code)
+	}
+
+	if len(ce.Fields) > 0 {
+		for k, v := range ce.Fields {
+			if s, ok := v.(string); ok {
+				res += fmt.Sprintf(`,"%s":"%s"`, k, s)
+				continue
+			}
+			res += fmt.Sprintf(`,"%s":%v`, k, v)
+		}
+	}
+
+	if ce.Last().StatusCode != 0 {
+		res += fmt.Sprintf(`,"statusCode":%d`, ce.Last().StatusCode)
+	}
+
+	if ce.Len() > 1 {
+		res += `,"errs":[`
+		strs := ce.Strs(false)
+		sep := ""
+		for i := range strs {
+			res += fmt.Sprintf(`%s"%s"`, sep, strs[i])
+			sep = ","
+		}
+		res += "]"
+	}
+
+	s := ""
+	for i := range ce.Frames {
+		if strings.Contains(ce.Frames[i].Function, "fasthttp") {
+			break
+		}
+		if strings.Contains(ce.Frames[i].Function, "github.com/axkit/errors") {
+			continue
+		}
+		s += ce.Frames[i].Function + "() in " + fmt.Sprintf("%s:%d;", ce.Frames[i].File, ce.Frames[i].Line)
+	}
+
+	res += fmt.Sprintf(`,"stack":"%s"`, s)
+	res += "}"
+	return []byte(res)
 }
