@@ -3,10 +3,10 @@ package errors
 import (
 	"errors"
 	"fmt"
-	"strings"
 )
 
-// WrappedError is a structure defining wrapped error.
+// WrappedError is a structure defining wrapped error. It's public to be able
+// customize logging and failed HTTP responses.
 type WrappedError struct {
 
 	// Message holds final error's Message.
@@ -25,7 +25,7 @@ type WrappedError struct {
 	// Protected
 	Protected bool `json:"-"`
 
-	// err is wrapped original error.
+	// err holds initial error.
 	err               error
 	isMessageReplaced bool
 }
@@ -43,116 +43,26 @@ func (we WrappedError) Err() error {
 	return errors.New(we.Message)
 }
 
-// CatchedError holds call stack
+// CatchedError holds original error, all intermediate error wraps and the call stack.
 type CatchedError struct {
-	Frames  []Frame                `json:"frames,omitempty"`
-	Fields  map[string]interface{} `json:"-"`
-	lasterr WrappedError
-	werrs   []WrappedError
+	frames      []Frame
+	fields      map[string]interface{}
+	lasterr     WrappedError
+	werrs       []WrappedError
+	isRecatched bool
 }
 
-// New returns CatchedError with stack at the point of calling with severity level Tiny.
-// The function is used if there is no original error what can be wrapped.
-func New(msg string) *CatchedError {
-	return newx(msg)
-}
-
-// NewMedium returns CatchedError with stack at the point of calling and severity level Medium.
-func NewMedium(msg string) *CatchedError {
-	return newx(msg).Severity(Medium)
-}
-
-// NewCritical returns CatchedError with stack at the point of calling and severity level Critical.
-func NewCritical(msg string) *CatchedError {
-	return newx(msg).Severity(Critical)
-}
-
-func newx(msg string) *CatchedError {
-	return &CatchedError{lasterr: WrappedError{Message: msg, isMessageReplaced: true}, Frames: DefaultCallerFramesFunc(1)}
-}
-
-// Catch wraps an error with capturing stack at the point of calling.
-// A severity level is Tiny.
-//
-// If err is already CapturedError, the stack does not capture again. It's assumed
-// it was done before. The attributes Severity and StatusCode inherits but can be changed later.
-//
-// if err == nil returns nil.
-func Catch(err error) *CatchedError {
-	if err == nil {
-		return nil
-	}
-	return catch(err, 0)
-}
-
-// CatchCustom wraps an error with custom stack capturer.
-func CatchCustom(err error, stackcapture func() []Frame) *CatchedError {
-	if err == nil {
-		return nil
-	}
-
-	return &CatchedError{lasterr: WrappedError{Message: err.Error(), err: err, isMessageReplaced: true}, Frames: stackcapture()}
-}
-
-func catch(err error, callerOffset int) *CatchedError {
-
-	if ce, ok := err.(*CatchedError); ok {
-		ce.werrs = append(ce.werrs, ce.lasterr)
-		ce.lasterr.Protected = false
-		ce.lasterr.isMessageReplaced = false
-		return ce
-	}
-
-	return &CatchedError{
-		lasterr: WrappedError{
-			Message:           err.Error(),
-			err:               err,
-			isMessageReplaced: true,
-		},
-		Frames: DefaultCallerFramesFunc(callerOffset),
-	}
-}
-
-// Msg replaces error message.
-func (ce *CatchedError) Msg(s string) *CatchedError {
-	if ce == nil {
-		return nil
-	}
-	ce.lasterr.Message = s
-	ce.lasterr.isMessageReplaced = true
-	return ce
-}
-
-// Last returns last wrapper.
-func (ce *CatchedError) Last() *WrappedError {
-	return &ce.lasterr
-}
-
-// Len returns amount of errors wrapped + 1.
-func (ce *CatchedError) Len() int {
-	return 1 + len(ce.werrs)
-}
-
-// Error implements interface golang/errors Error.  Returns string, taking into
-// account value of ErrorMethodMode.
+// CatchedError implements golang standard Error interface. Returns string, taking into
+// account setting ErrorMethodMode.
 //
 // If ErrorMethodMode == Multi, results build using LIFO principle.
 func (ce CatchedError) Error() string {
+	res := ce.lasterr.Message
 	if ErrorMethodMode == Single {
-		if ce.lasterr.Message != "" {
-			return ce.lasterr.Message
-		}
-
-		for i := len(ce.werrs) - 1; i >= 0; i-- {
-			if res := ce.werrs[i].Message; res != "" {
-				return res
-			}
-		}
-		return "?"
+		return res
 	}
 
 	// Multi
-	res := ce.lasterr.Message
 	for i := len(ce.werrs) - 1; i >= 0; i-- {
 		if msg := ce.werrs[i].Message; msg != "" {
 			res += ": " + msg
@@ -162,54 +72,203 @@ func (ce CatchedError) Error() string {
 	return res
 }
 
-// Strs returns error messages of wrapped errors except last message and empty messages.
-func (ce *CatchedError) Strs(exceptProtected bool) []string {
-	if len(ce.werrs) == 0 {
+// Frames returns callstack frames.
+func (ce *CatchedError) Frames() []Frame {
+	return ce.frames
+}
+
+// Fields returns all key/value pairs assotiated with error.
+func (ce *CatchedError) Fields() map[string]interface{} {
+	return ce.fields
+}
+
+// Last returns the last wrap of error .
+func (ce *CatchedError) Last() WrappedError {
+	return ce.lasterr
+}
+
+// Len returns amount of errors wrapped + 1 or zero if nil.
+func (ce *CatchedError) Len() int {
+	if ce == nil {
+		return 0
+	}
+	return 1 + len(ce.werrs)
+}
+
+// WrappedErrors returns all errors holding by CatchedError.
+func (ce *CatchedError) WrappedErrors() []WrappedError {
+	res := make([]WrappedError, 1+len(ce.werrs))
+	res[0] = ce.lasterr
+	if len(ce.werrs) > 0 {
+		copy(res[1:], ce.werrs)
+	}
+	return res
+}
+
+// Alarmer wraps a single method Alarm that receives CatchedError and implement real-time
+// notification logic.
+//
+// The type CapturedError has method Alarm that recieves Alarmer as a parameter.
+type Alarmer interface {
+	Alarm(*CatchedError)
+}
+
+// New returns *CatchedError with stack at the point of calling and  severity level Tiny.
+// The function is used if there is no original error what can be wrapped.
+func New(msg string) *CatchedError {
+	return newx(msg, true)
+}
+
+// NewTiny is synonym to func New.
+func NewTiny(msg string) *CatchedError {
+	return newx(msg, true)
+}
+
+// NewMedium returns *CatchedError with stack at the point of calling and severity level Medium.
+func NewMedium(msg string) *CatchedError {
+	return newx(msg, true).Severity(Medium)
+}
+
+// NewCritical returns CatchedError with stack at the point of calling and severity level Critical.
+func NewCritical(msg string) *CatchedError {
+	return newx(msg, true).Severity(Critical)
+}
+
+func newx(msg string, stack bool) *CatchedError {
+	res := CatchedError{lasterr: WrappedError{Message: msg, isMessageReplaced: false}}
+	if stack {
+		res.frames = CallerFramesFunc(1)
+	}
+	return &res
+}
+
+// Catch wraps an error with capturing stack at the point of calling.
+// Assigns severity level Tiny.
+//
+// If err is already CapturedError, the stack does not capture again. It's assumed
+// it was done before. The attributes Severity and StatusCode inherits but can be changed later.
+//
+// Returns nil if err is nil.
+func Catch(err error) *CatchedError {
+	if err == nil {
+		return nil
+	}
+	return catch(err, 0)
+}
+
+// Raise returns explicitly defined CatchedError. Function captures stack at the point of calling.
+func Raise(ce *CatchedError) *CatchedError {
+	ce.frames = CallerFramesFunc(1)
+	return ce
+}
+
+// CatchCustom wraps an error with custom stack capturer.
+func CatchCustom(err error, stackcapture func() []Frame) *CatchedError {
+	if err == nil {
 		return nil
 	}
 
-	res := make([]string, 0, len(ce.werrs))
+	return &CatchedError{lasterr: WrappedError{Message: err.Error(), err: err, isMessageReplaced: false}, frames: stackcapture()}
+}
+
+func catch(err error, callerOffset int) *CatchedError {
+
+	if ce, ok := err.(*CatchedError); ok {
+		// message still stay the same!	It's expected message will be replaced later by calling Msg().
+		(*ce).isRecatched = true
+		return ce
+	}
+
+	return &CatchedError{
+		lasterr: WrappedError{
+			Message: err.Error(),
+			err:     err,
+		},
+		frames: CallerFramesFunc(callerOffset),
+	}
+}
+
+// Capture captures stack frames. Recommended to use when raised predefined errors.
+//
+// var ErrInvalidCustomerID = errors.New("invalid customer id")
+//
+// if c, ok := customers[id]; ok {
+// 	  return ErrInvalidCustomerID.Capture()
+// }
+func (ce *CatchedError) Capture() *CatchedError {
+	ce.frames = CallerFramesFunc(1)
+	return ce
+}
+
+// Msg sets or replaces latest error's text message.
+// If message different previous error pushed to error stack.
+func (ce *CatchedError) Msg(s string) error {
+	if ce == nil {
+		return nil
+	}
+
+	if ce.lasterr.Message == s {
+		return ce
+	}
+
+	ce.werrs = append(ce.werrs, ce.lasterr)
+	ce.lasterr.Message = s
+	return ce
+}
+
+// WrappedMessages returns error messages of wrapped errors except last message.
+func (ce *CatchedError) WrappedMessages(exceptProtected bool) []string {
+	return ce.messages(false, exceptProtected)
+}
+
+// AllMessages returns all error text messages including top (last) message.
+// The last message is in the beginning of slice.
+func (ce *CatchedError) AllMessages(exceptProtected bool) []string {
+	return ce.messages(true, exceptProtected)
+}
+
+func (ce *CatchedError) messages(includeTop, exceptProtected bool) []string {
+	var res []string
+
+	if includeTop {
+		if !(exceptProtected && ce.lasterr.Protected) && ce.lasterr.Message != "" {
+			res = append(res, ce.lasterr.Message)
+		}
+	}
 
 	for i := len(ce.werrs) - 1; i >= 0; i-- {
 		if ce.werrs[i].Protected && exceptProtected {
 			continue
 		}
-		if msg := ce.werrs[i].Message; msg != "" && ce.werrs[i].isMessageReplaced {
-			res = append(res, msg)
-		}
+		res = append(res, ce.werrs[i].Message)
 	}
+
 	return res
 }
 
-// CaptureDatabaseError захватывает ошибки связанные с СУБД, инициализирует ключ/значение
-// в зависимости от ошибок.
-// func CaptureDatabaseError(err error) *CapturedError {
-// 	ce := capture(err, 1)
-// 	if pgerr, ok := err.(*pq.Error); ok {
-// 		ce.Set("sqlcode", pgerr.Code)
-// 		if len(pgerr.Constraint) > 0 {
-// 			ce.Set("constraint", pgerr.Constraint)
-// 		}
-// 		if len(pgerr.DataTypeName) > 0 {
-// 			ce.Set("data_type_name", pgerr.DataTypeName)
-// 		}
-// 	}
-// 	return ce
-// }
-
-// Severity set error's severity level. It's ignored if level
+// Severity overwrites error's severity level. It's ignored if level
 // is lower than current level.
 func (ce *CatchedError) Severity(level SeverityLevel) *CatchedError {
 	if ce == nil {
 		return nil
 	}
+
 	if ce.lasterr.Severity < level {
 		ce.lasterr.Severity = level
 	}
+
 	return ce
 }
 
-// Medium sets severity level to Medium.
+func (ce *CatchedError) GetSeverity() SeverityLevel {
+	return ce.lasterr.Severity
+}
+
+func (ce *CatchedError) GetCode() string {
+	return ce.lasterr.Code
+}
+
+// Medium sets severity level to Medium. It's ignored if current level Critical.
 func (ce *CatchedError) Medium() *CatchedError {
 	return ce.Severity(Medium)
 }
@@ -219,38 +278,8 @@ func (ce *CatchedError) Critical() *CatchedError {
 	return ce.Severity(Critical)
 }
 
-// Get returns value by key.
-func (ce *CatchedError) Get(key string) (interface{}, bool) {
-	if ce == nil {
-		return nil, false
-	}
-
-	if ce.Fields == nil {
-		return nil, false
-	}
-
-	res, ok := ce.Fields[key]
-	return res, ok
-}
-
-// GetDefault returns value by key. Returns def if not found.
-func (ce *CatchedError) GetDefault(key string, def interface{}) interface{} {
-	if ce == nil {
-		return def
-	}
-
-	if ce.Fields == nil {
-		return def
-	}
-
-	res, ok := ce.Fields[key]
-	if !ok {
-		return def
-	}
-	return res
-}
-
 // StatusCode sets HTTP response code, recommended to be assigned.
+// StatusCode 404 is used by
 func (ce *CatchedError) StatusCode(code int) *CatchedError {
 	if ce == nil {
 		return nil
@@ -284,11 +313,11 @@ func (ce *CatchedError) Set(key string, val interface{}) *CatchedError {
 		return nil
 	}
 
-	if ce.Fields == nil {
-		ce.Fields = map[string]interface{}{}
+	if ce.fields == nil {
+		ce.fields = map[string]interface{}{}
 	}
 
-	ce.Fields[key] = val
+	ce.fields[key] = val
 	return ce
 }
 
@@ -312,11 +341,11 @@ func (ce *CatchedError) SetPairs(kvpairs ...interface{}) *CatchedError {
 		even = false
 	}
 
-	if ce.Fields == nil {
-		ce.Fields = map[string]interface{}{}
+	if ce.fields == nil {
+		ce.fields = map[string]interface{}{}
 	}
 
-	for i := 0; i < len(kvpairs)/2; i += 2 {
+	for i := 0; i < len(kvpairs); i += 2 {
 		key := fmt.Sprintf("%s", kvpairs[i])
 		var val interface{}
 		if !even && i == len(kvpairs)-1 {
@@ -324,7 +353,7 @@ func (ce *CatchedError) SetPairs(kvpairs ...interface{}) *CatchedError {
 		} else {
 			val = kvpairs[i+1]
 		}
-		ce.Fields[key] = val
+		ce.fields[key] = val
 	}
 	return ce
 }
@@ -335,11 +364,11 @@ func (ce *CatchedError) SetVals(key string, vals ...interface{}) *CatchedError {
 		return nil
 	}
 
-	if ce.Fields == nil {
-		ce.Fields = map[string]interface{}{}
+	if ce.fields == nil {
+		ce.fields = map[string]interface{}{}
 	}
 
-	ce.Fields[key] = vals
+	ce.fields[key] = vals
 	return ce
 }
 
@@ -349,85 +378,66 @@ func (ce *CatchedError) SetStrs(key string, strs ...string) *CatchedError {
 		return nil
 	}
 
-	if ce.Fields == nil {
-		ce.Fields = map[string]interface{}{}
+	if ce.fields == nil {
+		ce.fields = map[string]interface{}{}
 	}
 
-	ce.Fields[key] = strs
+	ce.fields[key] = strs
 	return ce
 }
 
-// IsNotFound returns true if it's not found error wrapped.
-func (ce *CatchedError) IsNotFound() bool {
+// Get returns value by key.
+func (ce *CatchedError) Get(key string) (interface{}, bool) {
 	if ce == nil {
+		return nil, false
+	}
+
+	if ce.fields == nil {
+		return nil, false
+	}
+
+	res, ok := ce.fields[key]
+	return res, ok
+}
+
+// GetDefault returns value by key. Returns def if not found.
+func (ce *CatchedError) GetDefault(key string, def interface{}) interface{} {
+	if ce == nil {
+		return def
+	}
+
+	if ce.fields == nil {
+		return def
+	}
+
+	res, ok := ce.fields[key]
+	if !ok {
+		return def
+	}
+	return res
+}
+
+// IsNotFound returns true if StatusCode is 404.
+func (ce *CatchedError) IsNotFound() bool {
+	return IsNotFound(ce)
+}
+
+// IsNotFound returns true if err is *CatchedError and StatusCode is 404.
+// If err wraps another errors, last one is taken for decision.
+func IsNotFound(err error) bool {
+	if err == nil {
 		return false
 	}
 
-	return (ce.lasterr.StatusCode == 404) && (ce.lasterr.Message == "not found")
+	if ce, ok := err.(*CatchedError); ok {
+		return ce.lasterr.StatusCode == 404
+	}
+
+	return false
 }
 
-type Eventer interface {
-	Str(key, val string) Eventer
-	Strs(key string, vals []string) Eventer
-	Fields(map[string]interface{}) Eventer
-	Int(string, int) Eventer
-}
-
-// JSON returns JSON object if err is CatchedError or quoted string if not.
-func JSON(err error) []byte {
-	if err == nil {
-		return nil
-	}
-
-	ce, ok := err.(*CatchedError)
-	if !ok {
-		return []byte(`"` + err.Error() + `"`)
-	}
-
-	res := "{"
-	res += fmt.Sprintf(`"severity":"%s"`, ce.Last().Severity.String())
-
-	if ce.Last().Code != "" {
-		res += fmt.Sprintf(`,"errcode":"%s"`, ce.Last().Code)
-	}
-
-	if len(ce.Fields) > 0 {
-		for k, v := range ce.Fields {
-			if s, ok := v.(string); ok {
-				res += fmt.Sprintf(`,"%s":"%s"`, k, s)
-				continue
-			}
-			res += fmt.Sprintf(`,"%s":%v`, k, v)
-		}
-	}
-
-	if ce.Last().StatusCode != 0 {
-		res += fmt.Sprintf(`,"statusCode":%d`, ce.Last().StatusCode)
-	}
-
-	if ce.Len() > 1 {
-		res += `,"errs":[`
-		strs := ce.Strs(false)
-		sep := ""
-		for i := range strs {
-			res += fmt.Sprintf(`%s"%s"`, sep, strs[i])
-			sep = ","
-		}
-		res += "]"
-	}
-
-	s := ""
-	for i := range ce.Frames {
-		if strings.Contains(ce.Frames[i].Function, "fasthttp") {
-			break
-		}
-		if strings.Contains(ce.Frames[i].Function, "github.com/axkit/errors") {
-			continue
-		}
-		s += ce.Frames[i].Function + "() in " + fmt.Sprintf("%s:%d;", ce.Frames[i].File, ce.Frames[i].Line)
-	}
-
-	res += fmt.Sprintf(`,"stack":"%s"`, s)
-	res += "}"
-	return []byte(res)
+// Alarm send error to Alarmer.
+// Intended usage is real-time SRE notification if critical error.
+func (ce *CatchedError) Alarm(a Alarmer) {
+	a.Alarm(ce)
 }

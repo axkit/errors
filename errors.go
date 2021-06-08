@@ -1,15 +1,17 @@
 package errors
 
 import (
-	"runtime"
+	e "errors"
 )
 
-// CaptureStackStopWord captures stack till the function name
-// has not contains CaptureStackStopWord
+// CaptureStackStopWord holds a function name part. Stack will be captured
+// till the function with the first CaptureStackStopWord
 //
 // The stack capturing ignored if it's empty or it's appeared
 // in the first function name.
-var CaptureStackStopWord string
+//
+// It can be used to ignore stack above HTTP handler.
+var CaptureStackStopWord string = "fasthttp"
 
 // Mode describes allowed methods of response returned Error().
 type Mode int
@@ -45,6 +47,7 @@ const (
 )
 
 var (
+	// important: quotas are included.
 	tiny     = []byte(`"tiny"`)
 	medium   = []byte(`"medium"`)
 	critical = []byte(`"critical"`)
@@ -71,7 +74,7 @@ func (sl SeverityLevel) String() string {
 	return sunknown
 }
 
-// MarshalJSON implements json/Marsaller interface.
+// MarshalJSON implements json/Marshaller interface.
 func (sl SeverityLevel) MarshalJSON() ([]byte, error) {
 	switch sl {
 	case Tiny:
@@ -84,68 +87,54 @@ func (sl SeverityLevel) MarshalJSON() ([]byte, error) {
 	return unknown, nil
 }
 
-// Frame describes content of a single stack frame stored with error.
-type Frame struct {
-	Function string `json:"function"`
-	File     string `json:"file"`
-	Line     int    `json:"line"`
-}
-
-var (
-	// DefaultCallerFramesFunc holds default function used by function Catch()
-	// to collect call frames.
-	DefaultCallerFramesFunc func(offset int) []Frame = CallerFrames
-
-	// CallingStackMaxLen holds maximum elements in the call frames.
-	CallingStackMaxLen int = 15
-)
-
-// CallerFrames returns not more then slice of Frame.
-func CallerFrames(offset int) []Frame {
-	var res []Frame
-	pc := make([]uintptr, CallingStackMaxLen)
-	n := runtime.Callers(3+offset, pc)
-	frames := runtime.CallersFrames(pc[:n])
-
-	for {
-		frame, more := frames.Next()
-		res = append(res, Frame{Function: frame.Function, File: frame.File, Line: frame.Line})
-		if !more {
-			break
-		}
-	}
-	return res
-}
-
-// NotFound объект не найден.
+// NotFound is a function, returns *CatchedError with predefined StatusCode=404 and Severity=Medium.
 var NotFound = func(msg string) *CatchedError {
-	return newx(msg).StatusCode(404).Severity(Medium)
+	return newx(msg, false).StatusCode(404).Severity(Medium)
 }
 
+// ValidationFailed is a function, returns *CatchedError with predefined StatusCode=400 and Severity=Tiny.
 var ValidationFailed = func(msg string) *CatchedError {
-	return newx(msg).StatusCode(400).Severity(Tiny)
+	return newx(msg, false).StatusCode(400)
 }
 
+// ConsistencyFailed is a function, returns *CatchedError with predefined StatusCode=500 and Severity=Critical.
 var ConsistencyFailed = func() *CatchedError {
-	return newx("consistency failed").StatusCode(500).Severity(Critical)
+	return newx("consistency failed", false).StatusCode(500).Severity(Critical)
 }
 
 var InvalidRequestBody = func(s string) *CatchedError {
-	return newx(s).StatusCode(400).Severity(Critical)
+	return newx(s, false).StatusCode(400).Severity(Critical)
 }
 
+// Unauthorized is a function, returns *CatchedError with predefined StatusCode=401 and Severity=Medium.
 var Unauthorized = func() *CatchedError {
-	return newx("unauthorized").StatusCode(401).Severity(Medium)
+	return newx("unauthorized", false).StatusCode(401).Severity(Medium)
 }
 
+// Forbidden is a function, returns *CatchedError with predefined StatusCode=403 and Severity=Critical.
 var Forbidden = func() *CatchedError {
-	return newx("forbidden").StatusCode(403).Severity(Critical)
+	return newx("forbidden", false).StatusCode(403).Severity(Critical)
 }
 
+// ValidationFailed is a function, returns *CatchedError with predefined StatusCode=400 and Severity=Tiny.
 var InternalError = func() *CatchedError {
-	return newx("internal error").StatusCode(500).Severity(Critical)
+	return newx("internal error", false).StatusCode(500).Severity(Critical)
 }
 
 var UnprocessableEntity = func(s string) *CatchedError {
-	return newx(s).StatusCode(422).Severity(Medium)
+	return newx(s, false).StatusCode(422).Severity(Medium)
+}
+
+func Is(err, target error) bool {
+	return e.Is(err, target)
+}
+
+func As(err error, target interface{}) bool {
+	return e.As(err, target)
+}
+
+// Unwrap returns the result of calling the Unwrap method on err, if err's type contains an Unwrap method returning error.
+// Otherwise, Unwrap returns nil.
+func Unwrap(err error) error {
+	return e.Unwrap(err)
 }
