@@ -9,7 +9,7 @@ type FormattingFlag uint8
 
 const (
 	// AddStack - add stack in the JSON.
-	AddStack FormattingFlag = 1<<iota + 1
+	AddStack FormattingFlag = 1 << iota
 
 	// AddProtected - add protected errors in the JSON.
 	AddProtected
