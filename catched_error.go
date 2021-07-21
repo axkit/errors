@@ -246,16 +246,13 @@ func (ce *CatchedError) messages(includeTop, exceptProtected bool) []string {
 	return res
 }
 
-// Severity overwrites error's severity level. It's ignored if level
-// is lower than current level.
+// Severity overwrites error's severity level.
 func (ce *CatchedError) Severity(level SeverityLevel) *CatchedError {
 	if ce == nil {
 		return nil
 	}
 
-	if ce.lasterr.Severity < level {
-		ce.lasterr.Severity = level
-	}
+	ce.lasterr.Severity = level
 
 	return ce
 }
