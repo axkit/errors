@@ -58,10 +58,15 @@ func err2json(err error, flags FormattingFlag) []byte {
 
 	if len(ce.fields) > 0 && flags&AddFields == AddFields {
 		for k, v := range ce.fields {
+			if s, ok := v.(string); ok {
+				res += fmt.Sprintf(`,"%s":"%s"`, k, s)
+				continue
+			}
 			if s, ok := v.(interface{ String() string }); ok {
 				res += fmt.Sprintf(`,"%s":"%s"`, k, s.String())
 				continue
 			}
+
 			res += fmt.Sprintf(`,"%s":%v`, k, v)
 		}
 	}
