@@ -3,6 +3,7 @@ package errors_test
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"testing"
 	"time"
 
@@ -524,3 +525,22 @@ func TestCatchedError_WrappedMessages(t *testing.T) {
 		}*/
 
 //}
+
+func TestWrap(t *testing.T) {
+
+	var err error
+	var ErrValidationFailed = errors.New("value validation failed").StatusCode(400)
+
+	if _, err = strconv.Atoi("5g"); err != nil {
+		err = errors.Wrap(err, ErrValidationFailed.Set("value", "5g"))
+	}
+
+	if err.Error() != "value validation failed" {
+		t.Error("expected another message")
+	}
+
+	t.Log(string(errors.ToServerJSON(err)))
+
+	//err := errors.Raise(ErrAuthServiceIsNotAvailable).StatusCode(500).Critical()
+
+}

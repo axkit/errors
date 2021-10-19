@@ -77,7 +77,7 @@ func (ce *CatchedError) Frames() []Frame {
 	return ce.frames
 }
 
-// Fields returns all key/value pairs assotiated with error.
+// Fields returns all key/value pairs associated with error.
 func (ce *CatchedError) Fields() map[string]interface{} {
 	return ce.fields
 }
@@ -154,6 +154,28 @@ func Catch(err error) *CatchedError {
 		return nil
 	}
 	return catch(err, 0)
+}
+
+func Wrap(err error, ce *CatchedError) *CatchedError {
+	if err == nil {
+		return nil
+	}
+
+	e := catch(err, 0)
+
+	if len(ce.fields) > 0 {
+		if len(e.fields) == 0 {
+			e.fields = ce.fields
+		} else {
+			for k, v := range ce.fields {
+				e.fields[k] = v
+			}
+		}
+	}
+
+	e.werrs = append(e.werrs, e.lasterr)
+	e.lasterr = ce.lasterr
+	return e
 }
 
 // Raise returns explicitly defined CatchedError. Function captures stack at the point of calling.
