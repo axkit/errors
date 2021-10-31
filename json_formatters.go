@@ -2,12 +2,14 @@ package errors
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
 type FormattingFlag uint8
 
 const (
+
 	// AddStack - add stack in the JSON.
 	AddStack FormattingFlag = 1 << iota
 
@@ -16,28 +18,32 @@ const (
 
 	// AddProtected - add key/value pairs.
 	AddFields
+
+	// AddWrappedErrors - add to the output previous errors.
+	AddWrappedErrors
 )
 
+// ToJSON formats error as JSON with flags.
 func ToJSON(err error, flags FormattingFlag) []byte {
 	return err2json(err, flags)
 }
 
-// JSON returns JSON representation of error.
+// ToClientJSON returns error formatted as JSON addressed to HTTP response.
+// {
+// 	"msg" : "validation failed",
+// 	"code" : "ORA-0600",
+// 	"severity" : "critical",
+// 	"statusCode" : 400
+// }
 func ToClientJSON(err error) []byte {
 	return err2json(err, 0)
 }
 
+// ToServerJSON returns error formatted as JSON addressed to server logs.
 func ToServerJSON(err error) []byte {
-	return err2json(err, AddProtected|AddStack|AddFields)
+	return err2json(err, AddProtected|AddStack|AddFields|AddWrappedErrors)
 }
 
-// JSON4Client returns JSON representation of error as following object
-// {
-// 	"msg" : "text",
-// 	"code" : "ORA-0600",
-// 	"severity" : "critical",
-// 	"statusCode" :
-// }
 func err2json(err error, flags FormattingFlag) []byte {
 	if err == nil {
 		return nil
@@ -75,11 +81,11 @@ func err2json(err error, flags FormattingFlag) []byte {
 		res += fmt.Sprintf(`,"statusCode":%d`, ce.lasterr.StatusCode)
 	}
 
-	if len(ce.werrs) > 0 {
+	if len(ce.werrs) > 0 && flags&AddWrappedErrors == AddWrappedErrors {
 		res += `,"errs":[`
 		sep := ""
 		for i := range ce.werrs {
-			res += fmt.Sprintf(`%s{"msg":"%s"}`, sep, ce.werrs[i].Message)
+			res += sep + we2json(&ce.werrs[i])
 			sep = ","
 		}
 		res += "]"
@@ -101,4 +107,29 @@ func err2json(err error, flags FormattingFlag) []byte {
 
 	res += "}"
 	return []byte(res)
+}
+
+// we2json converts WrapperError
+func we2json(we *WrappedError) string {
+
+	if we.Protected {
+		return ""
+	}
+
+	res := "{"
+	sep := ""
+	if we.Code != "" {
+		res += `"code": "` + we.Code + `"`
+		sep = ","
+	}
+
+	res += sep + `"severity":"` + we.Severity.String() + `"`
+	sep = ","
+	res += sep + `"msg":"` + we.Message
+	if we.StatusCode != 0 {
+		res += sep + `"statusCode":` + strconv.Itoa(we.StatusCode)
+	}
+	res += "}"
+
+	return res
 }

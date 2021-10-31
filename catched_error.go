@@ -218,7 +218,7 @@ func catch(err error, callerOffset int) *CatchedError {
 // 	  return ErrInvalidCustomerID.Capture()
 // }
 func (ce *CatchedError) Capture() *CatchedError {
-	ce.frames = CallerFramesFunc(1)
+	ce.frames = CallerFramesFunc(0)
 	return ce
 }
 

@@ -528,6 +528,7 @@ func TestCatchedError_WrappedMessages(t *testing.T) {
 
 func TestWrap(t *testing.T) {
 
+	errors.ErrorMethodMode = errors.Single
 	var err error
 	var ErrValidationFailed = errors.New("value validation failed").StatusCode(400)
 
@@ -536,11 +537,11 @@ func TestWrap(t *testing.T) {
 	}
 
 	if err.Error() != "value validation failed" {
-		t.Error("expected another message")
+		t.Error("expected another message, got:", err.Error())
 	}
 
-	t.Log(string(errors.ToServerJSON(err)))
+	t.Log(string(errors.ToJSON(err, errors.AddWrappedErrors)))
+	t.Log(string(errors.ToJSON(err, 0)))
 
 	//err := errors.Raise(ErrAuthServiceIsNotAvailable).StatusCode(500).Critical()
-
 }
