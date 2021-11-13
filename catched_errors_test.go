@@ -175,7 +175,6 @@ func TestCatchedError_Fields(t *testing.T) {
 		}
 
 	}
-
 }
 
 func TestCatchedError_Set(t *testing.T) {
@@ -544,4 +543,21 @@ func TestWrap(t *testing.T) {
 	t.Log(string(errors.ToJSON(err, 0)))
 
 	//err := errors.Raise(ErrAuthServiceIsNotAvailable).StatusCode(500).Critical()
+}
+
+func TestCatchedError_FieldasStringSlice(t *testing.T) {
+	err := errors.Catch(io.ErrUnexpectedEOF)
+
+	for i := range ts {
+		err.Set(ts[i].key, ts[i].val)
+	}
+	err.Set("perms", []string{"Login", "CreateUser", "UpdateUser"})
+
+	m := err.Fields()
+	if m == nil {
+		t.Error("#1 failed. Expected non empty fields, got nil")
+		t.FailNow()
+	}
+
+	t.Logf("%s", string(errors.ToServerJSON(err)))
 }
