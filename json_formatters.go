@@ -96,6 +96,9 @@ func err2json(err error, flags FormattingFlag) []byte {
 		res += `,"errs":[`
 		sep := ""
 		for i := range ce.werrs {
+			if ce.werrs[i].Protected {
+				continue
+			}
 			res += sep + we2json(&ce.werrs[i])
 			sep = ","
 		}
@@ -123,22 +126,14 @@ func err2json(err error, flags FormattingFlag) []byte {
 // we2json converts WrapperError
 func we2json(we *WrappedError) string {
 
-	if we.Protected {
-		return ""
-	}
-
-	res := "{"
-	sep := ""
+	res := `{"severity":"` + we.Severity.String() + `"`
 	if we.Code != "" {
-		res += `"code": "` + we.Code + `"`
-		sep = ","
+		res += `,"code": "` + we.Code + `"`
 	}
 
-	res += sep + `"severity":"` + we.Severity.String() + `"`
-	sep = ","
-	res += sep + `"msg":"` + we.Message
+	res += `,"msg":"` + strings.Replace(we.Message, "\"", "'", -1) + `"`
 	if we.StatusCode != 0 {
-		res += sep + `"statusCode":` + strconv.Itoa(we.StatusCode)
+		res += `,"statusCode":` + strconv.Itoa(we.StatusCode)
 	}
 	res += "}"
 

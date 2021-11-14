@@ -561,3 +561,23 @@ func TestCatchedError_FieldasStringSlice(t *testing.T) {
 
 	t.Logf("%s", string(errors.ToServerJSON(err)))
 }
+
+func TestCatchedError_JSONFormatting(t *testing.T) {
+
+	err1 := errors.ValidationFailed("validation failed").Code("001")
+	err2 := errors.InternalError().Code("002")
+
+	ae := errors.Wrap(io.ErrUnexpectedEOF, err1)
+	be := errors.Wrap(ae, err2)
+
+	// err := errors.Catch(io.ErrUnexpectedEOF).Code("ORA-0600").Set("userId", 98)
+	// err.Set("perms", []string{"Login", "CreateUser", "UpdateUser"})
+
+	// xe := errors.Catch(err).Set("name", "Robert").Code("AAA-0001")
+
+	// t.Logf("%s", string(errors.ToJSON(xe, errors.AddStack|errors.AddProtected|errors.AddFields|errors.AddWrappedErrors)))
+
+	// be := errors.Wrap(io.ErrUnexpectedEOF, xe).Code("XE-001")
+	t.Logf("%s", string(errors.ToJSON(be, errors.AddStack|errors.AddProtected|errors.AddFields|errors.AddWrappedErrors)))
+
+}

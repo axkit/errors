@@ -175,6 +175,7 @@ func Wrap(err error, ce *CatchedError) *CatchedError {
 
 	e.werrs = append(e.werrs, e.lasterr)
 	e.lasterr = ce.lasterr
+
 	return e
 }
 
