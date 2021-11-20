@@ -1,6 +1,7 @@
 package errors
 
 import (
+	"bytes"
 	"fmt"
 	"strconv"
 	"strings"
@@ -45,6 +46,7 @@ func ToServerJSON(err error) []byte {
 }
 
 func err2json(err error, flags FormattingFlag) []byte {
+
 	if err == nil {
 		return nil
 	}
@@ -54,59 +56,61 @@ func err2json(err error, flags FormattingFlag) []byte {
 		return []byte(`{"msg": "` + err.Error() + `"}`)
 	}
 
-	res := "{"
-	res += fmt.Sprintf(`"msg":"%s"`, ce.lasterr.Message)
-	res += fmt.Sprintf(`,"severity":"%s"`, ce.lasterr.Severity.String())
+	buf := bytes.NewBuffer([]byte(`{"msg":"`))
+	buf.WriteString(ce.lasterr.Message)
+	buf.Write([]byte(`","severity":"`))
+	buf.WriteString(ce.lasterr.Severity.String())
+	buf.WriteByte('"')
 
 	if ce.lasterr.Code != "" {
-		res += fmt.Sprintf(`,"code":"%s"`, ce.Last().Code)
+		buf.Write([]byte(`,"code":"`))
+		buf.WriteString(ce.lasterr.Code)
+		buf.WriteByte('"')
+	}
+	if ce.lasterr.StatusCode != 0 {
+		buf.WriteString(`,"statusCode":`)
+		buf.WriteString(strconv.Itoa(ce.lasterr.StatusCode))
 	}
 
-	if len(ce.fields) > 0 && flags&AddFields == AddFields {
-		for k, v := range ce.fields {
-			if s, ok := v.(interface{ String() string }); ok {
-				res += fmt.Sprintf(`,"%s":"%s"`, k, s.String())
-				continue
+	if len(ce.fields) > 0 {
+		for _, key := range RootLevelFields {
+			v, ok := ce.fields[key]
+			if ok {
+				buf.WriteByte(',')
+				buf.WriteString(kvString(key, v))
+				delete(ce.fields, key)
 			}
-			if s, ok := v.([]string); ok {
-				res += `,"` + k + `": [`
-				sep := ""
-				for i := range s {
-					res += fmt.Sprintf(`%s"%s"`, sep, s[i])
-					sep = ","
-				}
-				res += "]"
-				continue
-			}
-
-			if s, ok := v.(string); ok {
-				res += fmt.Sprintf(`,"%s":"%s"`, k, s)
-				continue
-			}
-
-			res += fmt.Sprintf(`,"%s":%v`, k, v)
 		}
 	}
 
-	if ce.lasterr.StatusCode != 0 {
-		res += fmt.Sprintf(`,"statusCode":%d`, ce.lasterr.StatusCode)
+	if len(ce.fields) > 0 && flags&AddFields == AddFields {
+		buf.Write([]byte(`,"ctx":{`))
+		sep := byte(0)
+		for k, v := range ce.fields {
+			buf.WriteByte(sep)
+			buf.WriteString(kvString(k, v))
+			sep = ','
+		}
+		buf.WriteByte('}')
 	}
 
-	if len(ce.werrs) > 0 && flags&AddWrappedErrors == AddWrappedErrors {
-		res += `,"errs":[`
-		sep := ""
+	if flags&AddWrappedErrors == AddWrappedErrors && len(ce.werrs) > 0 {
+		buf.Write([]byte(`,"errs":[`))
+		sep := byte(0)
 		for i := range ce.werrs {
 			if ce.werrs[i].Protected {
 				continue
 			}
-			res += sep + we2json(&ce.werrs[i])
-			sep = ","
+			buf.WriteByte(sep)
+			buf.WriteString(we2json(&ce.werrs[i]))
+			sep = ','
 		}
-		res += "]"
+		buf.WriteByte(']')
 	}
 
-	if flags&AddStack == AddStack {
-		s := ""
+	if flags&AddStack == AddStack && len(ce.frames) > 0 {
+		buf.Write([]byte(`,"stack":"`))
+		sep := []byte{}
 		for i := range ce.frames {
 			if strings.Contains(ce.frames[i].Function, CaptureStackStopWord) {
 				break
@@ -114,13 +118,20 @@ func err2json(err error, flags FormattingFlag) []byte {
 			if strings.Contains(ce.frames[i].Function, "github.com/axkit/errors") {
 				continue
 			}
-			s += ce.frames[i].Function + "() in " + fmt.Sprintf("%s:%d;", ce.frames[i].File, ce.frames[i].Line)
+			buf.Write(sep)
+			buf.WriteString(ce.frames[i].Function)
+			buf.Write([]byte(`() in `))
+			buf.WriteString(ce.frames[i].File)
+			buf.WriteByte(':')
+			buf.WriteString(strconv.Itoa(ce.frames[i].Line))
+			sep = []byte(`; `)
 		}
-		res += fmt.Sprintf(`,"stack":"%s"`, s)
+		buf.WriteByte('"')
 	}
 
-	res += "}"
-	return []byte(res)
+	buf.WriteByte('}')
+
+	return buf.Bytes()
 }
 
 // we2json converts WrapperError
@@ -138,4 +149,29 @@ func we2json(we *WrappedError) string {
 	res += "}"
 
 	return res
+}
+
+// kvString returns key and value as json key value pair.
+func kvString(key string, val interface{}) string {
+	var res string
+	if s, ok := val.(interface{ String() string }); ok {
+		return `"` + key + `":"` + s.String() + `"`
+	}
+
+	if s, ok := val.([]string); ok {
+		res = `"` + key + `":[`
+		sep := ""
+		for i := range s {
+			res += sep + `"` + s[i] + `"`
+			sep = ","
+		}
+		res += "]"
+		return res
+	}
+
+	if s, ok := val.(string); ok {
+		return `"` + key + `":"` + s + `"`
+	}
+
+	return fmt.Sprintf(`"%s":%v`, key, val)
 }

@@ -45,11 +45,12 @@ func (we WrappedError) Err() error {
 
 // CatchedError holds original error, all intermediate error wraps and the call stack.
 type CatchedError struct {
-	frames      []Frame
-	fields      map[string]interface{}
-	lasterr     WrappedError
-	werrs       []WrappedError
-	isRecatched bool
+	frames       []Frame
+	fields       map[string]interface{}
+	lasterr      WrappedError
+	werrs        []WrappedError
+	isRecatched  bool
+	isStackAdded bool
 }
 
 // CatchedError implements golang standard Error interface. Returns string, taking into
@@ -182,6 +183,7 @@ func Wrap(err error, ce *CatchedError) *CatchedError {
 // Raise returns explicitly defined CatchedError. Function captures stack at the point of calling.
 func Raise(ce *CatchedError) *CatchedError {
 	ce.frames = CallerFramesFunc(1)
+	ce.isStackAdded = true
 	return ce
 }
 
@@ -191,7 +193,10 @@ func CatchCustom(err error, stackcapture func() []Frame) *CatchedError {
 		return nil
 	}
 
-	return &CatchedError{lasterr: WrappedError{Message: err.Error(), err: err, isMessageReplaced: false}, frames: stackcapture()}
+	return &CatchedError{
+		lasterr:      WrappedError{Message: err.Error(), err: err, isMessageReplaced: false},
+		frames:       stackcapture(),
+		isStackAdded: true}
 }
 
 func catch(err error, callerOffset int) *CatchedError {
@@ -207,7 +212,8 @@ func catch(err error, callerOffset int) *CatchedError {
 			Message: err.Error(),
 			err:     err,
 		},
-		frames: CallerFramesFunc(callerOffset),
+		frames:       CallerFramesFunc(callerOffset),
+		isStackAdded: true,
 	}
 }
 
@@ -220,6 +226,7 @@ func catch(err error, callerOffset int) *CatchedError {
 // }
 func (ce *CatchedError) Capture() *CatchedError {
 	ce.frames = CallerFramesFunc(0)
+	ce.isStackAdded = true
 	return ce
 }
 
@@ -327,7 +334,7 @@ func (ce *CatchedError) Protect() *CatchedError {
 	return ce
 }
 
-// Set accociates a single key with value.
+// Set associates a single key with value.
 func (ce *CatchedError) Set(key string, val interface{}) *CatchedError {
 	if ce == nil {
 		return nil
@@ -344,7 +351,7 @@ func (ce *CatchedError) Set(key string, val interface{}) *CatchedError {
 // LastNonPairedValue holds value to be assigned by SetPairs if amount of parameters is odd.
 var LastNonPairedValue interface{} = "missed value"
 
-// SetPairs accociates multiple key/value pairs. SetPairs("id", 10, "name", "John")
+// SetPairs associates multiple key/value pairs. SetPairs("id", 10, "name", "John")
 // if amount of parameters is odd, SetPairs("id", 10, "name") uses LastNonPairedValue
 // as the last value.
 func (ce *CatchedError) SetPairs(kvpairs ...interface{}) *CatchedError {

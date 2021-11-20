@@ -569,6 +569,8 @@ func TestCatchedError_JSONFormatting(t *testing.T) {
 
 	ae := errors.Wrap(io.ErrUnexpectedEOF, err1)
 	be := errors.Wrap(ae, err2)
+	ae.Set("reason", "hello world")
+	ae.Set("lala", time.Now())
 
 	// err := errors.Catch(io.ErrUnexpectedEOF).Code("ORA-0600").Set("userId", 98)
 	// err.Set("perms", []string{"Login", "CreateUser", "UpdateUser"})

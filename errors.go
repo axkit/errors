@@ -13,6 +13,12 @@ import (
 // It can be used to ignore stack above HTTP handler.
 var CaptureStackStopWord string = "fasthttp"
 
+// RootLevelFields holds a name of context fields which will be generated
+// placed on the root level in JSON together with standard error attribute
+// such as msg, code, statusCode. All other context fields will be located
+// under root level attribute "ctx".
+var RootLevelFields = []string{"reason"}
+
 // Mode describes allowed methods of response returned Error().
 type Mode int
 
