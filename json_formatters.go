@@ -87,7 +87,9 @@ func err2json(err error, flags FormattingFlag) []byte {
 		buf.Write([]byte(`,"ctx":{`))
 		sep := byte(0)
 		for k, v := range ce.fields {
-			buf.WriteByte(sep)
+			if sep != 0 {
+				buf.WriteByte(sep)
+			}
 			buf.WriteString(kvString(k, v))
 			sep = ','
 		}
@@ -101,7 +103,9 @@ func err2json(err error, flags FormattingFlag) []byte {
 			if ce.werrs[i].Protected {
 				continue
 			}
-			buf.WriteByte(sep)
+			if sep != 0 {
+				buf.WriteByte(sep)
+			}
 			buf.WriteString(we2json(&ce.werrs[i]))
 			sep = ','
 		}
