@@ -253,6 +253,29 @@ func TestIsNotFound(t *testing.T) {
 	}
 }
 
+func TestIs(t *testing.T) {
+
+	err1 := errors.New("not found")
+	err2 := err1
+
+	if !errors.Is(err1, err2) {
+		t.Error("case #1")
+	}
+
+	err3 := errors.NotFound("not found")
+	err4 := err3
+	if !errors.Is(err3, err4) {
+		t.Error("case #2")
+	}
+
+	err5 := errors.NotFound("not found")
+	err6 := err3.Raise()
+	if !errors.Is(err5, err6) {
+		t.Error("case #3")
+	}
+
+}
+
 func TestCatchedError_Error(t *testing.T) {
 
 	errors.ErrorMethodMode = errors.Single

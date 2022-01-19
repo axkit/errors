@@ -3,6 +3,7 @@ package errors
 import (
 	"errors"
 	"fmt"
+	"sync/atomic"
 )
 
 // WrappedError is a structure defining wrapped error. It's public to be able
@@ -51,7 +52,11 @@ type CatchedError struct {
 	werrs        []WrappedError
 	isRecatched  bool
 	isStackAdded bool
+
+	uid uint64
 }
+
+var uid uint64
 
 // CatchedError implements golang standard Error interface. Returns string, taking into
 // account setting ErrorMethodMode.
@@ -136,7 +141,7 @@ func NewCritical(msg string) *CatchedError {
 }
 
 func newx(msg string, stack bool) *CatchedError {
-	res := CatchedError{lasterr: WrappedError{Message: msg, isMessageReplaced: false}}
+	res := CatchedError{lasterr: WrappedError{Message: msg, isMessageReplaced: false}, uid: atomic.AddUint64(&uid, 1)}
 	if stack {
 		res.frames = CallerFramesFunc(1)
 	}
@@ -176,15 +181,13 @@ func Wrap(err error, ce *CatchedError) *CatchedError {
 
 	e.werrs = append(e.werrs, e.lasterr)
 	e.lasterr = ce.lasterr
-
+	e.uid = ce.uid
 	return e
 }
 
 // Raise returns explicitly defined CatchedError. Function captures stack at the point of calling.
 func Raise(ce *CatchedError) *CatchedError {
-	ce.frames = CallerFramesFunc(1)
-	ce.isStackAdded = true
-	return ce
+	return ce.Raise()
 }
 
 // CatchCustom wraps an error with custom stack capturer.
@@ -214,6 +217,7 @@ func catch(err error, callerOffset int) *CatchedError {
 		},
 		frames:       CallerFramesFunc(callerOffset),
 		isStackAdded: true,
+		uid:          atomic.AddUint64(&uid, 1),
 	}
 }
 
@@ -225,14 +229,48 @@ func catch(err error, callerOffset int) *CatchedError {
 // 	  return ErrInvalidCustomerID.Capture()
 // }
 func (ce *CatchedError) Capture() *CatchedError {
-	ce.frames = CallerFramesFunc(0)
-	ce.isStackAdded = true
-	return ce
+
+	// ce.frames = CallerFramesFunc(0)
+	// ce.isStackAdded = true
+	// return ce
+	return ce.Raise()
+}
+
+// Capture captures stack frames. Recommended to use when raised predefined errors.
+//
+// var ErrInvalidCustomerID = errors.New("invalid customer id")
+//
+// if c, ok := customers[id]; ok {
+// 	  return ErrInvalidCustomerID.Capture()
+// }
+func (ce *CatchedError) Raise() *CatchedError {
+
+	res := CatchedError{
+		frames:       CallerFramesFunc(0),
+		lasterr:      ce.lasterr,
+		isRecatched:  false,
+		isStackAdded: true,
+		uid:          ce.uid,
+	}
+	if len(ce.fields) > 0 {
+		res.fields = make(map[string]interface{}, len(ce.fields))
+		for k, v := range ce.fields {
+			res.fields[k] = v
+		}
+	}
+	if len(ce.werrs) > 0 {
+		res.werrs = append(res.werrs, ce.werrs...)
+	}
+	return &res
 }
 
 // Msg sets or replaces latest error's text message.
 // If message different previous error pushed to error stack.
 func (ce *CatchedError) Msg(s string) error {
+	return ce.msg(s)
+}
+
+func (ce *CatchedError) msg(s string) *CatchedError {
 	if ce == nil {
 		return nil
 	}

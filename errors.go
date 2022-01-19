@@ -93,45 +93,63 @@ func (sl SeverityLevel) MarshalJSON() ([]byte, error) {
 	return unknown, nil
 }
 
+// TODO: delete all predefined errors!
+var (
+	nf  = newx("not found", false).StatusCode(404).Severity(Medium)
+	vf  = newx("validation failed", false).StatusCode(400)
+	cf  = newx("consistency failed", false).StatusCode(500).Severity(Critical)
+	irr = newx("invalid request body", false).StatusCode(400).Severity(Critical)
+	ie  = newx("internal error", false).StatusCode(500).Severity(Critical)
+	un  = newx("unauthorized", false).StatusCode(401).Severity(Medium)
+	fbd = newx("forbidden", false).StatusCode(403).Severity(Critical)
+	ue  = newx("unprocessable entity", false).StatusCode(422).Severity(Medium)
+)
+
 // NotFound is a function, returns *CatchedError with predefined StatusCode=404 and Severity=Medium.
+
 var NotFound = func(msg string) *CatchedError {
-	return newx(msg, false).StatusCode(404).Severity(Medium)
+	return nf.Raise().msg(msg)
 }
 
 // ValidationFailed is a function, returns *CatchedError with predefined StatusCode=400 and Severity=Tiny.
 var ValidationFailed = func(msg string) *CatchedError {
-	return newx(msg, false).StatusCode(400)
+	return vf.Raise().msg(msg)
 }
 
 // ConsistencyFailed is a function, returns *CatchedError with predefined StatusCode=500 and Severity=Critical.
 var ConsistencyFailed = func() *CatchedError {
-	return newx("consistency failed", false).StatusCode(500).Severity(Critical)
+	return cf.Raise()
 }
 
 var InvalidRequestBody = func(s string) *CatchedError {
-	return newx(s, false).StatusCode(400).Severity(Critical)
+	return irr.Raise().msg(s)
 }
 
 // Unauthorized is a function, returns *CatchedError with predefined StatusCode=401 and Severity=Medium.
 var Unauthorized = func() *CatchedError {
-	return newx("unauthorized", false).StatusCode(401).Severity(Medium)
+	return ue.Raise()
 }
 
 // Forbidden is a function, returns *CatchedError with predefined StatusCode=403 and Severity=Critical.
 var Forbidden = func() *CatchedError {
-	return newx("forbidden", false).StatusCode(403).Severity(Critical)
+	return fbd.Raise()
 }
 
 // ValidationFailed is a function, returns *CatchedError with predefined StatusCode=400 and Severity=Tiny.
 var InternalError = func() *CatchedError {
-	return newx("internal error", false).StatusCode(500).Severity(Critical)
+	return ie.Raise()
 }
 
 var UnprocessableEntity = func(s string) *CatchedError {
-	return newx(s, false).StatusCode(422).Severity(Medium)
+	return ue.Raise().msg(s)
 }
 
 func Is(err, target error) bool {
+	ce, cok := err.(*CatchedError)
+	te, tok := target.(*CatchedError)
+	if cok && tok {
+		return ce.uid == te.uid
+	}
 	return e.Is(err, target)
 }
 
