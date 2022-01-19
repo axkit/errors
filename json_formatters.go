@@ -177,5 +177,9 @@ func kvString(key string, val interface{}) string {
 		return `"` + key + `":"` + s + `"`
 	}
 
+	if b, ok := val.([]byte); ok {
+		return `"` + key + `":` + string(b)
+	}
+
 	return fmt.Sprintf(`"%s":%v`, key, val)
 }
