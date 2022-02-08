@@ -1,6 +1,7 @@
 package errors_test
 
 import (
+	"database/sql"
 	"fmt"
 	"io"
 	"strconv"
@@ -271,6 +272,11 @@ func TestIs(t *testing.T) {
 	err5 := errors.NotFound("not found")
 	err6 := err3.Raise()
 	if !errors.Is(err5, err6) {
+		t.Error("case #3")
+	}
+
+	err7 := errors.Wrap(sql.ErrConnDone, err6)
+	if !errors.Is(err7, err6) {
 		t.Error("case #3")
 	}
 

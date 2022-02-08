@@ -204,7 +204,7 @@ func CatchCustom(err error, stackcapture func() []Frame) *CatchedError {
 
 func catch(err error, callerOffset int) *CatchedError {
 
-	if ce, ok := err.(*CatchedError); ok {
+	if ce, ok := err.(*CatchedError); ok && ce != nil {
 		// message still stay the same!	It's expected message will be replaced later by calling Msg().
 		(*ce).isRecatched = true
 		return ce
