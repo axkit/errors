@@ -1,117 +1,40 @@
-# errors [![GoDoc](https://pkg.go.dev/badge/github.com/errors/errors?status.svg)](https://pkg.go.dev/github.com/axkit/errors) [![Build Status](https://travis-ci.org/axkit/errors.svg?branch=main)](https://travis-ci.org/axkit/errors) [![Coverage Status](https://coveralls.io/repos/github/axkit/errors/badge.svg)](https://coveralls.io/github/akkit/errors) [![Go Report Card](https://goreportcard.com/badge/github.com/axkit/errors)](https://goreportcard.com/report/github.com/axkit/errors)
+# errors 
 
-# errors
-The errors package provides an enterprise approach of error handling. Drop in replacement of standard errors package.
+[![Build Status](https://github.com/axkit/errors/actions/workflows/go.yml/badge.svg)](https://github.com/axkit/errors/actions)
+[![Go Report Card](https://goreportcard.com/badge/github.com/axkit/errors)](https://goreportcard.com/report/github.com/axkit/errors)
+[![GoDoc](https://pkg.go.dev/badge/github.com/axkit/errors)](https://pkg.go.dev/github.com/axkit/errors)
+[![Coverage Status](https://coveralls.io/repos/github/axkit/errors/badge.svg?branch=main)](https://coveralls.io/github/axkit/errors?branch=main)
 
-## Motivation
-Make errors helpful for quick problem localization. Reduce amount of emails to the helpdesk due to better explained error reason. 
 
-# Requirements
+The errors package provides an enterprise approach of error handling.
 
-- Wrapping: enhance original error message with context specific one;
-- Capture the calling stack;
-- Cut calling stack related to the HTTP framework;
-- Enhance error with key/value pairs, later could be written into structurized log;
-- Enhance error with the code what can be refered in documentation. (i.g. ORA-0600 in Oracle);
-- Enhance error with severity level;
-- Support different JSON representation for server and client; 
-- Possibility to mark any error as protected. It will not be presented in client's JSON.
-- Notify SRE if needed.
+In large and complex applications, each error typically has a unique code. Using this code, you can find in the documentation the possible causes of the error and the ways to resolve it. This package allows you to define a list of errors with specific attributes: error code, message text, corresponding HTTP status code, and severity level.
 
-## Installation
+Example:
+```go 
+var ErrInvalidCustomerID = errors.New("invalid customer id").
+    StatusCode(400).
+    Code("ERR-0199").
+    Severity(errors.Medium)
 ```
-go get -u github.com/axkit/error
+With a unique error code, we can direct the user to the page
+`https://mysomeservice.com/content/errors/ERR-0199`
+where the causes of the error and methods for resolving it will be described in detail, if necessary.
+
+Any predefined error is instantiated and transformed into an Error object when the Raise method is invoked.
+Additionally, key-value pairs can be attached to the error, which can be viewed by the administrator in the logs,
+all predefined attributes cab be reassigned.
+
+```go
+    // type request struct {
+	//		SessionID int 
+	//		CustomerID int 
+	// 		CustomerFirstName string  
+	// }
+
+	if request.CustomerID <= 0 {
+		return ErrInvalidCustomerID.Raise().
+			Set("sessionId", request.SessionID).
+			Severity(errors.Critical)
+	}
 ```
-
-## Usage Examples
-
-### Catch and Enhance Standard Go Error 
-```
-func (srv *CustomerService)WriteJSON(w io.Writer, c *Customer) (int, error) {
-
-    buf, err := json.Marshal(src)
-    if err != nil {
-        return 0, errors.Catch(err).Critical().Set("customer", c).StatusCode(500).Msg("internal error")
-    }
-
-    n, err := w.Write(buf)
-    if err != nil {
-        // Level is Tiny by default. 
-        return 0, errors.Catch(err).StatusCode(500).Msg("writing to stream failed").Code("APP-0001")
-    }
-     
-    return n, nil  
-}
-
-```
-
-### Catch and Enhance Already Catched Error 
-```
-func AllowedProductAmount(balance, price int) (int, error) {
-
-    res, err := Calc(balance, price)
-    if err != nil {
-        return 0, errors.Catch(err).SetPairs("balance", balance, "price", price).Msg("no allowed products")
-    }
-
-    return res, nil
-}
-
-
-func Calc(a, b int) (int, error) {
-
-    if b == 0 {
-        return 0, errors.New("divizion by zero").Critical()
-    }
-
-    return a/b, nil
-}
-```
-
-### Recatch NotFound Error Conditionally
-There is a special function ```errors.IsNotFound()``` that returns true error has StatusCode = 404 or created using ```errors.NotFound()```.
-```
-func (srv *CustomerService)AcceptPayment(customerID int, paymentAmount int64) error {
-
-    c, err := srv.repo.CustomerByID(id)
-    if err != nil {
-        if errors.IsNotFound(err) {
-            return nil, errors.Catch(err).Medium().Msg("invalid customer")
-        }
-        return return nil, errors.Catch(err).Critical().Msg("internal error")
-    }
-
-    return c, nil
-}
-
-func (srv *CustomerService)CustomerByID(id int) (*Customer, error) {
-
-    c, ok := srv.repo.CustomerByID(id)
-    if !ok {
-        return nil, errors.NotFound("customer not found").Set("id", id)
-    }
-
-    return c, nil
-}
-```
-### Write Error Responce to Client
-```
-    err := doSmth()
-    
-    // err is standard error  
-    fmt.Println(errors.ToClientJSON(err))
-
-    // Output:
-    {"msg":"result of Error() method"}
-
-```
-
-### Write Error Responce to Server Log
-
-
-### Send Alarm to SRE
-
-
-## License
-MIT
-

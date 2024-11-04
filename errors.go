@@ -1,164 +1,166 @@
 package errors
 
 import (
-	e "errors"
+	se "errors"
 )
 
-// CaptureStackStopWord holds a function name part. Stack will be captured
-// till the function with the first CaptureStackStopWord
-//
-// The stack capturing ignored if it's empty or it's appeared
-// in the first function name.
-//
-// It can be used to ignore stack above HTTP handler.
-var CaptureStackStopWord string = "fasthttp"
+// attrs defines additional metadata that can be attached to an error.
+type attrs struct {
+	// message holds the final error's message.
+	message string
 
-// RootLevelFields holds a name of context fields which will be generated
-// placed on the root level in JSON together with standard error attribute
-// such as msg, code, statusCode. All other context fields will be located
-// under root level attribute "ctx".
-var RootLevelFields = []string{"reason"}
+	// severity holds the severity level of the error.
+	severity SeverityLevel
 
-// Mode describes allowed methods of response returned Error().
-type Mode int
+	// statusCode holds the HTTP status code recommended for an HTTP response if specified.
+	statusCode int
 
-const (
-	// Multi return all error messages separated by ": ".
-	Multi Mode = 0
+	// code holds the application-specific error code.
+	code string
 
-	// Single return message of last error in the stack.
-	Single Mode = 1
-)
+	// protected marks the error as protected to avoid certain types of modifications or exposure.
+	protected bool
+}
 
-// ErrorMethodMode holds behavior of Error() method.
-var ErrorMethodMode = Single
+func (a *attrs) empty() bool {
+	return a.message == "" && a.severity == 0 && a.statusCode == 0 && a.code == "" && !a.protected
+}
 
-// SeverityLevel describes error severity levels.
-type SeverityLevel int
-
-const (
-	// Tiny classifies as expected, managed errors that do not require administrator attention.
-	// It's not recommended to write a call stack to the journal file.
-	//
-	// Example: error related to validation of entered form fields.
-	Tiny SeverityLevel = iota
-
-	// Medium classifies an regular error. A call stack is written to the log.
-	Medium
-
-	// Critical classifies a significant error, requiring immediate attention.
-	// An error occurrence fact shall be passed to the administrator in all possible ways.
-	// A call stack is written to the log.
-	Critical
-)
-
-var (
-	// important: quotas are included.
-	tiny     = []byte(`"tiny"`)
-	medium   = []byte(`"medium"`)
-	critical = []byte(`"critical"`)
-	unknown  = []byte(`"unknown"`)
-)
-
-const (
-	stiny     = "tiny"
-	smedium   = "medium"
-	scritical = "critical"
-	sunknown  = "unknown"
-)
-
-// String returns severity level string representation.
-func (sl SeverityLevel) String() string {
-	switch sl {
-	case Tiny:
-		return stiny
-	case Medium:
-		return smedium
-	case Critical:
-		return scritical
+// Wrap wraps an existing error with a new message, effectively creating
+// a new error that includes the previous error.
+func Wrap(err error, message string) *Error {
+	res := Error{
+		err: err,
 	}
-	return sunknown
-}
 
-// MarshalJSON implements json/Marshaller interface.
-func (sl SeverityLevel) MarshalJSON() ([]byte, error) {
-	switch sl {
-	case Tiny:
-		return tiny, nil
-	case Medium:
-		return medium, nil
-	case Critical:
-		return critical, nil
+	switch x := err.(type) {
+	case *Error:
+		res = *x
+		x.pureWrapper = false
+	case *PredefinedError:
+		res.attrs = x.attrs
+		res.fields = cloneMap(x.fields)
+	case error:
+		break
+	default:
+		break
 	}
-	return unknown, nil
-}
 
-// TODO: delete all predefined errors!
-var (
-	nf  = newx("not found", false).StatusCode(404).Severity(Medium)
-	vf  = newx("validation failed", false).StatusCode(400)
-	cf  = newx("consistency failed", false).StatusCode(500).Severity(Critical)
-	irr = newx("invalid request body", false).StatusCode(400).Severity(Critical)
-	ie  = newx("internal error", false).StatusCode(500).Severity(Critical)
-	un  = newx("unauthorized", false).StatusCode(401).Severity(Medium)
-	fbd = newx("forbidden", false).StatusCode(403).Severity(Critical)
-	ue  = newx("unprocessable entity", false).StatusCode(422).Severity(Medium)
-)
-
-// NotFound is a function, returns *CatchedError with predefined StatusCode=404 and Severity=Medium.
-
-var NotFound = func(msg string) *CatchedError {
-	return nf.Raise().msg(msg)
-}
-
-// ValidationFailed is a function, returns *CatchedError with predefined StatusCode=400 and Severity=Tiny.
-var ValidationFailed = func(msg string) *CatchedError {
-	return vf.Raise().msg(msg)
-}
-
-// ConsistencyFailed is a function, returns *CatchedError with predefined StatusCode=500 and Severity=Critical.
-var ConsistencyFailed = func() *CatchedError {
-	return cf.Raise()
-}
-
-var InvalidRequestBody = func(s string) *CatchedError {
-	return irr.Raise().msg(s)
-}
-
-// Unauthorized is a function, returns *CatchedError with predefined StatusCode=401 and Severity=Medium.
-var Unauthorized = func() *CatchedError {
-	return ue.Raise()
-}
-
-// Forbidden is a function, returns *CatchedError with predefined StatusCode=403 and Severity=Critical.
-var Forbidden = func() *CatchedError {
-	return fbd.Raise()
-}
-
-// ValidationFailed is a function, returns *CatchedError with predefined StatusCode=400 and Severity=Tiny.
-var InternalError = func() *CatchedError {
-	return ie.Raise()
-}
-
-var UnprocessableEntity = func(s string) *CatchedError {
-	return ue.Raise().msg(s)
-}
-
-func Is(err, target error) bool {
-	ce, cok := err.(*CatchedError)
-	te, tok := target.(*CatchedError)
-	if cok && tok {
-		return ce.uid == te.uid
+	res.message = message
+	if len(res.stack) == 0 {
+		res.stack = CallerFramesFunc(1)
 	}
-	return e.Is(err, target)
+
+	return &res
 }
 
-func As(err error, target interface{}) bool {
-	return e.As(err, target)
+func cloneMap(m map[string]any) map[string]any {
+	if m == nil {
+		return nil
+	}
+
+	clone := make(map[string]interface{}, len(m))
+	for k, v := range m {
+		clone[k] = v
+	}
+	return clone
 }
 
-// Unwrap returns the result of calling the Unwrap method on err, if err's type contains an Unwrap method returning error.
-// Otherwise, Unwrap returns nil.
-func Unwrap(err error) error {
-	return e.Unwrap(err)
+// Is checks if the error is of the same type as the target error.
+func Is(err error, target error) bool {
+	if err == nil || target == nil {
+		return err == target
+	}
+
+	switch x := err.(type) {
+	case *Error:
+		return is(x, target)
+	case *PredefinedError:
+		return is(x.toError(), target)
+	}
+
+	return se.Is(err, target)
+}
+
+// is checks if two custom errors are equal based on their attributes or if their wrapped errors are equal.
+func is(e *Error, target error) bool {
+	switch t := target.(type) {
+	case *Error:
+		if t.pureWrapper {
+			return is(e, t.err)
+		}
+		if e.attrs == t.attrs || e == t {
+			return true
+		}
+	case *PredefinedError:
+		if t.attrs == e.attrs {
+			return true
+		}
+	default:
+		return se.Is(e.err, target)
+	}
+
+	if e.err == nil {
+		return false
+	}
+
+	switch x := e.err.(type) {
+	case *Error:
+		return is(x, target)
+	case *PredefinedError:
+		return is(x.toError(), target)
+	}
+
+	return se.Is(e.err, target)
+}
+
+// As checks if the error can be cast to a target type.
+func As(err error, target any) bool {
+	if err == nil {
+		return false
+	}
+
+	if target == nil {
+		panic("axkit/errors: target cannot be nil")
+	}
+
+	if e, ok := err.(*Error); ok {
+		return as(e, target)
+	}
+
+	if _, ok := err.(*PredefinedError); ok {
+		panic("axkit/errors: error cannot be a pointer to a PredefinedError")
+	}
+
+	return se.As(err, target)
+}
+
+// as assists the As function in casting errors to the target type, accounting for wrapped errors.
+func as(e *Error, target any) bool {
+
+	switch t := target.(type) {
+	case **Error:
+		if e.attrs == (*t).attrs || e == *t {
+			*t = e
+			return true
+		}
+
+		if e.err == nil {
+			return false
+		}
+
+		switch x := e.err.(type) {
+		case *Error:
+			return as(x, target)
+		case *PredefinedError:
+			if e.attrs == x.attrs {
+				*t = (*x).toError()
+				return true
+			}
+		}
+	case **PredefinedError, *PredefinedError:
+		panic("axkit/errors: target cannot be a pointer to a PredefinedError")
+	}
+
+	return se.As(e, target)
 }
