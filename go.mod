@@ -1,6 +1,6 @@
 module github.com/axkit/errors
 
-go 1.22.5
+go 1.22
 
 require github.com/tidwall/sjson v1.2.5
 
