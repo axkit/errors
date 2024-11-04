@@ -3,7 +3,7 @@
 [![Build Status](https://github.com/axkit/errors/actions/workflows/go.yml/badge.svg)](https://github.com/axkit/errors/actions)
 [![Go Report Card](https://goreportcard.com/badge/github.com/axkit/errors)](https://goreportcard.com/report/github.com/axkit/errors)
 [![GoDoc](https://pkg.go.dev/badge/github.com/axkit/errors)](https://pkg.go.dev/github.com/axkit/errors)
-[![Coverage Status](https://coveralls.io/repos/github/axkit/errors/badge.svg?branch=main)](https://coveralls.io/github/axkit/errors?branch=main)
+[![Coverage Status](https://coveralls.io/repos/github/axkit/errors/badge.svg?branch=master)](https://coveralls.io/github/axkit/errors?branch=master)
 
 
 The errors package provides an enterprise approach of error handling.
