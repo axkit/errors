@@ -6,23 +6,24 @@ import "bytes"
 type SeverityLevel int
 
 const (
-	// Tiny classifies as expected, managed errors that do not require administrator attention.
-	// It's not recommended to write a call stack to the journal file.
+	// Tiny classifies expected, managed errors that do not require administrator attention.
+	// Writing a call stack to the journal file is not recommended.
 	//
 	// Example: error related to validation of entered form fields.
 	Tiny SeverityLevel = iota
 
-	// Medium classifies an regular error. A call stack is written to the log.
+	// Medium classifies a regular error. A call stack is written to the log.
 	Medium
 
 	// Critical classifies a significant error, requiring immediate attention.
-	// An error occurrence fact shall be passed to the administrator in all possible ways.
-	// A call stack is written to the log.
+	// The occurrence of the error should be communicated to the administrator
+	// through all available channels. A call stack is written to the log.
+	// If Alarmer is set, it will be called.
 	Critical
 )
 
 var (
-	// important: quotas are included.
+	// Important: quotes are included.
 	tiny     = []byte(`"tiny"`)
 	medium   = []byte(`"medium"`)
 	critical = []byte(`"critical"`)
@@ -62,6 +63,7 @@ func (sl SeverityLevel) MarshalJSON() ([]byte, error) {
 	return unknown, nil
 }
 
+// UnmarshalJSON implements json/Unmarshaller interface.
 func (sl *SeverityLevel) UnmarshalJSON(data []byte) error {
 	switch {
 	case bytes.Equal(data, tiny):
