@@ -1,11 +1,28 @@
+// Package errors provides a structured and extensible way to create, wrap, and manage errors
+// in Go applications. It includes support for adding contextual information, managing error
+// hierarchies, and setting attributes such as severity, HTTP status codes, and custom error codes.
+//
+// The package is designed to enhance error handling by allowing developers to attach additional
+// metadata to errors, wrap underlying errors with more context, and facilitate debugging and
+// logging. It also supports integration with alerting systems through the Alarm method.
+//
+// Key features include:
+// - Wrapping errors with additional context.
+// - Setting custom attributes like severity, status codes, and business codes.
+// - Managing error stacks and hierarchies.
+// - Sending alerts for critical errors.
+// - Support for custom key-value pairs to enrich error information.
+// - Integration with predefined error types for common scenarios.
+// - Serialization errors for easy logging.
 package errors
 
 import (
 	se "errors"
+	"reflect"
 )
 
-// attrs defines additional metadata that can be attached to an error.
-type attrs struct {
+// metadata holds the metadata for an error, including its message, severity level, etc.
+type metadata struct {
 	// message holds the final error's message.
 	message string
 
@@ -22,28 +39,39 @@ type attrs struct {
 	protected bool
 }
 
-func (a *attrs) empty() bool {
-	return a.message == "" && a.severity == 0 && a.statusCode == 0 && a.code == "" && !a.protected
+func (a *metadata) empty() bool {
+	return a.message == "" &&
+		a.severity == 0 &&
+		a.statusCode == 0 && a.code == "" &&
+		!a.protected
+}
+
+func (a *metadata) equal(b metadata) bool {
+	return a.message == b.message &&
+		a.severity == b.severity &&
+		a.statusCode == b.statusCode && a.code == b.code &&
+		a.protected == b.protected
 }
 
 // Wrap wraps an existing error with a new message, effectively creating
 // a new error that includes the previous error.
 func Wrap(err error, message string) *Error {
-	res := Error{
-		err: err,
-	}
+	var res Error
 
-	switch x := err.(type) {
-	case *Error:
-		res = *x
-		x.pureWrapper = false
-	case *PredefinedError:
-		res.attrs = x.attrs
-		res.fields = cloneMap(x.fields)
-	case error:
-		break
-	default:
-		break
+	if err != nil {
+		res.err = err
+		switch x := err.(type) {
+		case *Error:
+			res = *x
+			x.pureWrapper = false
+		case *ErrorTemplate:
+			res.metadata = x.metadata
+			res.fields = cloneMap(x.fields)
+		case error:
+			break
+		default:
+			break
+		}
 	}
 
 	res.message = message
@@ -54,20 +82,12 @@ func Wrap(err error, message string) *Error {
 	return &res
 }
 
-func cloneMap(m map[string]any) map[string]any {
-	if m == nil {
-		return nil
-	}
-
-	clone := make(map[string]interface{}, len(m))
-	for k, v := range m {
-		clone[k] = v
-	}
-	return clone
-}
-
 // Is checks if the error is of the same type as the target error.
 func Is(err error, target error) bool {
+	if err == target {
+		return true
+	}
+
 	if err == nil || target == nil {
 		return err == target
 	}
@@ -75,7 +95,7 @@ func Is(err error, target error) bool {
 	switch x := err.(type) {
 	case *Error:
 		return is(x, target)
-	case *PredefinedError:
+	case *ErrorTemplate:
 		return is(x.toError(), target)
 	}
 
@@ -89,11 +109,11 @@ func is(e *Error, target error) bool {
 		if t.pureWrapper {
 			return is(e, t.err)
 		}
-		if e.attrs == t.attrs || e == t {
+		if e.metadata.equal(t.metadata) || e == t {
 			return true
 		}
-	case *PredefinedError:
-		if t.attrs == e.attrs {
+	case *ErrorTemplate:
+		if t.metadata.equal(e.metadata) {
 			return true
 		}
 	default:
@@ -107,7 +127,7 @@ func is(e *Error, target error) bool {
 	switch x := e.err.(type) {
 	case *Error:
 		return is(x, target)
-	case *PredefinedError:
+	case *ErrorTemplate:
 		return is(x.toError(), target)
 	}
 
@@ -124,12 +144,16 @@ func As(err error, target any) bool {
 		panic("axkit/errors: target cannot be nil")
 	}
 
+	if reflect.TypeOf(target).Kind() != reflect.Ptr {
+		panic("axkit/errors: target must be a non-nil pointer")
+	}
+
 	if e, ok := err.(*Error); ok {
 		return as(e, target)
 	}
 
-	if _, ok := err.(*PredefinedError); ok {
-		panic("axkit/errors: error cannot be a pointer to a PredefinedError")
+	if _, ok := err.(*ErrorTemplate); ok {
+		panic("axkit/errors: error cannot be a pointer to a ErrorTemplate")
 	}
 
 	return se.As(err, target)
@@ -140,7 +164,7 @@ func as(e *Error, target any) bool {
 
 	switch t := target.(type) {
 	case **Error:
-		if e.attrs == (*t).attrs || e == *t {
+		if e.metadata.equal((*t).metadata) || e == *t {
 			*t = e
 			return true
 		}
@@ -152,15 +176,27 @@ func as(e *Error, target any) bool {
 		switch x := e.err.(type) {
 		case *Error:
 			return as(x, target)
-		case *PredefinedError:
-			if e.attrs == x.attrs {
+		case *ErrorTemplate:
+			if e.metadata.equal(x.metadata) {
 				*t = (*x).toError()
 				return true
 			}
 		}
-	case **PredefinedError, *PredefinedError:
+	case **ErrorTemplate, *ErrorTemplate:
 		panic("axkit/errors: target cannot be a pointer to a PredefinedError")
 	}
 
 	return se.As(e, target)
+}
+
+func cloneMap(m map[string]any) map[string]any {
+	if m == nil {
+		return nil
+	}
+
+	clone := make(map[string]any, len(m))
+	for k, v := range m {
+		clone[k] = v
+	}
+	return clone
 }

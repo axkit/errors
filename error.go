@@ -1,27 +1,27 @@
 package errors
 
+// Error represents a structured error with metadata, custom fields, stack trace, and optional wrapping.
 type Error struct {
-	// ctx holds the context for the error, which can be used to store additional key-value pairs.
-	fields map[string]interface{}
+	metadata
+	fields map[string]any
 	stack  []StackFrame
-	attrs
 
 	pureWrapper bool
 	err         error
 }
 
-// Error returns the error message.
+// Error returns the error message, including any wrapped error messages.
 func (e *Error) Error() string {
 
 	res := e.message
 
 	if e.err != nil {
-		child := e.err.Error()
-		if child != "" {
+		prev := e.err.Error()
+		if prev != "" {
 			if res != "" {
-				res += ": " + child
+				res += ": " + prev
 			} else {
-				res = child
+				res = prev
 			}
 		}
 	}
@@ -29,7 +29,7 @@ func (e *Error) Error() string {
 	return res
 }
 
-// WrappedErrors returns all the errors that have been wrapped by this custom error, including itself.
+// WrappedErrors returns a slice of all wrapped errors, including the current one if it's not a pure wrapper.
 func (err *Error) WrappedErrors() []Error {
 	var res []Error
 	if !err.pureWrapper {
@@ -44,11 +44,11 @@ func (err *Error) WrappedErrors() []Error {
 
 		switch x := e.(type) {
 		case *Error:
-			if !x.attrs.empty() {
+			if !x.metadata.empty() {
 				res = append(res, *x)
 			}
 			e = x.err
-		case *PredefinedError:
+		case *ErrorTemplate:
 			res = append(res, *x.toError())
 			e = nil
 		default:
@@ -59,7 +59,12 @@ func (err *Error) WrappedErrors() []Error {
 	return res
 }
 
-// Wrap wraps an error with a predefined error.
+// Wrap returns a new Error that wraps the given error while retaining the current error's metadata and fields.
+// It also preserves the stack trace of the wrapped error if available.
+// The new error is marked as a pure wrapper if the original error is of type ErrorTemplate or Error.
+// If the original error is nil, it returns the current error.
+// This method is useful for chaining errors and maintaining context.
+// It supports wrapping both ErrorTemplate and Error types, preserving their fields and stack trace.
 func (e *Error) Wrap(err error) *Error {
 
 	if err == nil {
@@ -67,9 +72,9 @@ func (e *Error) Wrap(err error) *Error {
 	}
 
 	switch x := err.(type) {
-	case *PredefinedError:
+	case *ErrorTemplate:
 		return &Error{
-			attrs:       e.attrs,
+			metadata:    e.metadata,
 			fields:      cloneMap(e.fields),
 			pureWrapper: true,
 			err:         err,
@@ -77,7 +82,7 @@ func (e *Error) Wrap(err error) *Error {
 		}
 	case *Error:
 		res := Error{
-			attrs:       e.attrs,
+			metadata:    e.metadata,
 			fields:      cloneMap(e.fields),
 			pureWrapper: true,
 			err:         err,
@@ -89,7 +94,7 @@ func (e *Error) Wrap(err error) *Error {
 		}
 		if len(x.fields) > 0 {
 			if res.fields == nil {
-				res.fields = make(map[string]interface{}, len(x.fields))
+				res.fields = make(map[string]any, len(x.fields))
 			}
 			for k, v := range x.fields {
 				res.fields[k] = v
@@ -99,7 +104,7 @@ func (e *Error) Wrap(err error) *Error {
 	}
 
 	return &Error{
-		attrs:       e.attrs,
+		metadata:    e.metadata,
 		err:         err,
 		fields:      cloneMap(e.fields),
 		pureWrapper: true,
@@ -107,7 +112,7 @@ func (e *Error) Wrap(err error) *Error {
 	}
 }
 
-// Set sets a custom key-value pair for the predefined error.
+// Set adds or updates a custom key-value pair in the error's fields.
 func (e *Error) Set(key string, value any) *Error {
 	if e.fields == nil {
 		e.fields = make(map[string]any)
@@ -116,38 +121,38 @@ func (e *Error) Set(key string, value any) *Error {
 	return e
 }
 
-// Code sets an application-specific error code.
+// Code sets a custom application-specific code for the error.
 func (e *Error) Code(code string) *Error {
 	e.code = code
 	return e
 }
 
-// Severity sets the severity level of the error.
+// Severity sets the severity level for the error.
 func (e *Error) Severity(severity SeverityLevel) *Error {
 	e.severity = severity
 	return e
 }
 
-// StatusCode sets the HTTP status code for the error.
+// StatusCode sets the associated HTTP status code for the error.
 func (e *Error) StatusCode(statusCode int) *Error {
 	e.statusCode = statusCode
 	return e
 }
 
-// Protected marks the error as protected. Protected errors could be used to avoid certain types of modifications or exposure.
+// Protected marks the error as protected to prevent certain modifications or exposure.
 func (e *Error) Protected(protected bool) *Error {
 	e.protected = protected
 	return e
 }
 
-// Msg sets the error message. It overrides the existing message.
+// Msg sets the error message and marks the error as not being a pure wrapper.
 func (e *Error) Msg(s string) *Error {
 	e.message = s
 	e.pureWrapper = false
 	return e
 }
 
-// Alarm sends an alert for the error if an alarmer is set.
+// Alarm triggers an alert for the error if an alarmer is configured.
 func (e *Error) Alarm() {
 	if alarmer != nil {
 		alarmer.Alarm(e)

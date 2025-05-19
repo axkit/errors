@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestPredefinedError(t *testing.T) {
+func TestErrorTemplate(t *testing.T) {
 	msg := "test error"
 	err := New(msg)
 	if err.message != msg {
@@ -18,7 +18,7 @@ func TestPredefinedError(t *testing.T) {
 	}
 }
 
-func TestPredefinedError_Wrap(t *testing.T) {
+func TestErrorTemplate_Wrap(t *testing.T) {
 
 	filename := "non-existing-file"
 
@@ -47,21 +47,21 @@ func TestPredefinedError_Wrap(t *testing.T) {
 		}
 
 		if wErr.err.Error() != osErr.Error() {
-			t.Errorf("expected message %q, got %q", wErr.attrs.message, osErr.Error())
+			t.Errorf("expected message %q, got %q", wErr.metadata.message, osErr.Error())
 		}
 	}
 }
 
-func TestPredefinedError_Raise(t *testing.T) {
+func TestErrorTemplate_Raise(t *testing.T) {
 	pe := New("predefined error")
-	raisedErr := pe.Raise()
+	raisedErr := pe.Build()
 
-	if raisedErr.attrs.message != pe.attrs.message {
-		t.Errorf("expected message %q, got %q", pe.attrs.message, raisedErr.attrs.message)
+	if raisedErr.metadata.message != pe.metadata.message {
+		t.Errorf("expected message %q, got %q", pe.metadata.message, raisedErr.metadata.message)
 	}
 }
 
-func TestPredefinedError_Set(t *testing.T) {
+func TestErrorTemplate_Set(t *testing.T) {
 	pe := New("predefined error")
 	key, value := "key", "value"
 	pe.Set(key, value)
@@ -71,7 +71,7 @@ func TestPredefinedError_Set(t *testing.T) {
 	}
 }
 
-func TestPredefinedError_Attrs(t *testing.T) {
+func TestErrorTemplate_Attrs(t *testing.T) {
 	pe := New("predefined error")
 
 	// Test Code
@@ -103,7 +103,7 @@ func TestPredefinedError_Attrs(t *testing.T) {
 	}
 }
 
-func TestPredefinedError_CloneFields(t *testing.T) {
+func TestErrorTemplate_CloneFields(t *testing.T) {
 	pe := New("predefined error")
 	pe.Set("key1", "value1")
 	pe.Set("key2", "value2")

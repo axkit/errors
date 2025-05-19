@@ -1,12 +1,19 @@
 package errors
 
-import "runtime"
+import (
+	"fmt"
+	"runtime"
+)
 
 // StackFrame describes content of a single stack frame stored with error.
 type StackFrame struct {
 	Function string `json:"func"`
 	File     string `json:"file"`
 	Line     int    `json:"line"`
+}
+
+func (s StackFrame) String() string {
+	return fmt.Sprintf("%s:%d %s", s.File, s.Line, s.Function)
 }
 
 var (

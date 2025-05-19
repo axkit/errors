@@ -155,8 +155,8 @@ func TestAs(t *testing.T) {
 	})
 
 	t.Run("with Error", func(t *testing.T) {
-		err := New("test error").Raise().Set("key", "value")
-		target := New("test error").Raise()
+		err := New("test error").Build().Set("key", "value")
+		target := New("test error").Build()
 		if !As(err, &target) {
 			t.Errorf("expected true, got false")
 		}
@@ -165,8 +165,8 @@ func TestAs(t *testing.T) {
 		}
 	})
 	t.Run("with wrapped Error", func(t *testing.T) {
-		err := New("inner error").Raise().Wrap(os.ErrNotExist)
-		werr := New("outer error").Raise().Wrap(err)
+		err := New("inner error").Build().Wrap(os.ErrNotExist)
+		werr := New("outer error").Build().Wrap(err)
 
 		if !As(werr, &err) {
 			t.Errorf("expected true, got false")
@@ -174,7 +174,7 @@ func TestAs(t *testing.T) {
 	})
 	t.Run("with wrapped predefined error", func(t *testing.T) {
 		pe := New("predefined error")
-		err := New("outer error").Raise().Wrap(pe)
+		err := New("outer error").Build().Wrap(pe)
 
 		defer func() {
 			if r := recover(); r == nil {

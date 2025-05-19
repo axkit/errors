@@ -2,24 +2,19 @@ package errors
 
 import (
 	"encoding/json"
+	"slices"
 
 	"github.com/tidwall/sjson"
 )
 
-type ErrorMarshaler func(
-	message string,
-	severity SeverityLevel,
-	statusCode int,
-	code string) []byte
+var ErrMarshalError = New("error marshaling failed").Severity(Critical).StatusCode(500)
 
-var errorMarshaler = DefaultErrorMarshaler
-
-type ErrorMarshalingRule uint8
+type ErrorSerializationRule uint8
 
 const (
 
 	// AddStack - add stack in the JSON.
-	AddStack ErrorMarshalingRule = 1 << iota
+	AddStack ErrorSerializationRule = 1 << iota
 
 	// AddProtected - add protected errors in the JSON.
 	AddProtected
@@ -35,7 +30,7 @@ const (
 
 type ErrorFormattingOptions struct {
 	stopStackOn     string
-	include         ErrorMarshalingRule
+	include         ErrorSerializationRule
 	rootLevelFields []string
 }
 
@@ -51,7 +46,7 @@ func WithStopStackOn(stopOnFuncContains string) Option {
 	}
 }
 
-func WithAttributes(rule ErrorMarshalingRule) Option {
+func WithAttributes(rule ErrorSerializationRule) Option {
 	return func(e *ErrorFormattingOptions) {
 		e.include = rule
 	}
@@ -67,13 +62,13 @@ const (
 	ServerOutputFormat      = AddProtected | AddStack | AddFields | AddWrappedErrors
 	ServerDebugOutputFormat = AddProtected | AddStack | AddFields | AddWrappedErrors | IndentJSON
 	ClientDebugOutputFormat = AddProtected | AddStack | AddFields | AddWrappedErrors
-	ClientJSONFormatterFlag = 0
+	ClientOutputFormat      = 0 // no fields, no stack, no wrapped errors, only message.
 )
 
-// JSONErrorResponse is a struct that represents the JSON response of an error.
-type JSONErrorResponse struct {
+// SerializedError is serialization ready error.
+type SerializedError struct {
 	Message    string         `json:"msg"`
-	Severity   string         `json:"severity"`
+	Severity   string         `json:"severity,omitempty"`
 	Code       string         `json:"code,omitempty"`
 	StatusCode int            `json:"statusCode,omitempty"`
 	Fields     map[string]any `json:"fields,omitempty"`
@@ -81,113 +76,111 @@ type JSONErrorResponse struct {
 	Stack      []StackFrame   `json:"stack,omitempty"`
 }
 
-func errorToJSON(we *Error, options ErrorFormattingOptions) ([]byte, error) {
-	resp := JSONErrorResponse{
+// Serialize serializes the error to a SerializedError struct.
+func Serialize(err error, opts ...Option) *SerializedError {
+
+	if err == nil {
+		return nil
+	}
+	var option ErrorFormattingOptions
+	for _, opt := range opts {
+		opt(&option)
+	}
+	return serialize(err, option)
+}
+
+func serialize(err error, option ErrorFormattingOptions) *SerializedError {
+	switch e := err.(type) {
+	case *ErrorTemplate:
+		return serializeError(e.Build(), option)
+	case *Error:
+		return serializeError(e, option)
+	case interface{ Error() string }:
+		return &SerializedError{
+			Message: e.Error(),
+		}
+	}
+	panic("unsupported error type")
+}
+
+func serializeError(we *Error, option ErrorFormattingOptions) *SerializedError {
+
+	resp := SerializedError{
 		Message:    we.message,
 		Severity:   we.severity.String(),
 		Code:       we.code,
 		StatusCode: we.statusCode,
+		Fields:     we.fields,
+		Wrapped:    nil,
+		Stack:      nil,
 	}
 
-	if options.include&AddWrappedErrors != 0 {
+	if option.include&AddWrappedErrors != 0 {
 		resp.Wrapped = we.WrappedErrors()
 		resp.Wrapped = resp.Wrapped[1:]
 	}
 
-	var roolLevelFields map[string]any
-
-	if options.include&AddFields != 0 && len(we.fields) > 0 {
-		if len(options.rootLevelFields) > 0 {
-			roolLevelFields = make(map[string]any)
-			resp.Fields = make(map[string]any, len(we.fields))
-			for k, v := range we.fields {
-				found := false
-				for _, f := range options.rootLevelFields {
-					if k == f {
-						roolLevelFields[k] = v
-						found = true
-						break
-					}
-				}
-				if !found {
-					resp.Fields[k] = v
-				}
-			}
-		} else {
-			resp.Fields = we.fields
-		}
-
-		if options.include&AddStack != 0 && len(we.stack) > 0 {
-			resp.Stack = we.stack
-		}
-
+	if option.include&AddStack != 0 && len(we.stack) > 0 {
+		resp.Stack = we.stack
 	}
-
-	var buf []byte
-	var marshalError error
-	if options.include&IndentJSON != 0 {
-		buf, marshalError = json.MarshalIndent(resp, "", "  ")
-	} else {
-		buf, marshalError = json.Marshal(resp)
-	}
-
-	if marshalError != nil {
-		return nil, marshalError
-	}
-
-	if len(roolLevelFields) > 0 {
-		for k, v := range roolLevelFields {
-			buf, _ = sjson.SetBytes(buf, k, v)
-		}
-	}
-
-	return buf, nil
+	return &resp
 }
 
+// ToJSON serializes the error to JSON format.
 func ToJSON(err error, opts ...Option) []byte {
+
+	if err == nil {
+		return nil
+	}
 
 	var option ErrorFormattingOptions
 	for _, opt := range opts {
 		opt(&option)
 	}
 
-	if err == nil {
-		return nil
+	serr := serialize(err, option)
+
+	var rootLevelFields map[string]any
+
+	if len(option.rootLevelFields) > 0 {
+		rootLevelFields = make(map[string]any)
+		for k, v := range serr.Fields {
+			if slices.Contains(option.rootLevelFields, k) {
+				rootLevelFields[k] = v
+				delete(serr.Fields, k)
+			}
+		}
 	}
 
 	var buf []byte
-	var marshalError error
-	switch e := err.(type) {
-	case *Error:
-		buf, marshalError = errorToJSON(e, option)
-	case interface{ Error() string }:
-		buf = []byte(`{"msg": "` + e.Error() + `"}`)
+	var marshalErr error
+	if option.include&IndentJSON != 0 {
+		buf, marshalErr = json.MarshalIndent(serr, "", "  ")
+	} else {
+		buf, marshalErr = json.Marshal(serr)
 	}
 
-	if marshalError != nil {
-		return []byte(`{"msg": "` + err.Error() + `", "severity": "critical"}`)
+	if marshalErr == nil {
+		if len(rootLevelFields) > 0 {
+			for k, v := range rootLevelFields {
+				buf, _ = sjson.SetBytes(buf, k, v)
+			}
+		}
+		return buf
 	}
 
-	return buf
-}
+	if alarmer != nil {
+		alarmer.Alarm(ErrMarshalError.Wrap(marshalErr))
+	}
 
-func (err *Error) MarshalJSON() ([]byte, error) {
-	return errorMarshaler(err.message, err.severity, err.statusCode, err.code), nil
-}
+	// Marshalling can fail if Fields contains non-serializable values.
+	if len(serr.Fields) > 0 {
+		serr.Fields = nil
+		buf, marshalErr = json.Marshal(serr)
+		if marshalErr == nil {
+			return buf
+		}
+	}
 
-func DefaultErrorMarshaler(message string, severity SeverityLevel, statusCode int, code string) []byte {
-	buf := make([]byte, 0, len(message)+len(code)+len(severity.String())+32)
-	if message != "" {
-		buf, _ = sjson.SetBytes(buf, "message", message)
-	}
-	if severity != 0 {
-		buf, _ = sjson.SetBytes(buf, "severity", severity.String())
-	}
-	if statusCode != 0 {
-		buf, _ = sjson.SetBytes(buf, "statusCode", statusCode)
-	}
-	if code != "" {
-		buf, _ = sjson.SetBytes(buf, "code", code)
-	}
-	return buf
+	return []byte(`{"msg":"` + marshalErr.Error() + `", "severity": "critical"}`)
 }

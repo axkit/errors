@@ -48,7 +48,7 @@ func TestError(t *testing.T) {
 		{
 			name:       "wrap raised error",
 			msg:        "test error",
-			err:        New("test error").Raise(),
+			err:        New("test error").Build(),
 			code:       "X-0001",
 			statusCode: 500,
 			severity:   Critical,
@@ -70,8 +70,8 @@ func TestError(t *testing.T) {
 				Severity(tt.severity).Protected(true).
 				Msg(tt.msg)
 
-			if pe1.attrs != pe2.attrs {
-				t.Errorf("expected %v, got %v", pe1.attrs, pe2.attrs)
+			if pe1.metadata != pe2.metadata {
+				t.Errorf("expected %v, got %v", pe1.metadata, pe2.metadata)
 			}
 
 			if err.Error() != tt.expected {
@@ -91,7 +91,7 @@ func TestError_WrappedErrors(t *testing.T) {
 		{
 			name: "Single non-pure wrapper error",
 			err: &Error{
-				attrs:       attrs{message: "test error"},
+				metadata:    metadata{message: "test error"},
 				pureWrapper: false,
 			},
 			expected: 1,
@@ -99,10 +99,10 @@ func TestError_WrappedErrors(t *testing.T) {
 		{
 			name: "Nested Error",
 			err: &Error{
-				attrs:       attrs{message: "test error"},
+				metadata:    metadata{message: "test error"},
 				pureWrapper: false,
 				err: &Error{
-					attrs:       attrs{message: "nested error"},
+					metadata:    metadata{message: "nested error"},
 					pureWrapper: false,
 				},
 			},
@@ -113,7 +113,7 @@ func TestError_WrappedErrors(t *testing.T) {
 			err: &Error{
 				pureWrapper: true,
 				err: &Error{
-					attrs:       attrs{message: "nested error"},
+					metadata:    metadata{message: "nested error"},
 					pureWrapper: false,
 				},
 			},
@@ -122,8 +122,8 @@ func TestError_WrappedErrors(t *testing.T) {
 		{
 			name: "Pure wrapper with nested pure wrapper",
 			err: &Error{
-				attrs: attrs{message: "nested error"},
-				err:   os.ErrNotExist},
+				metadata: metadata{message: "nested error"},
+				err:      os.ErrNotExist},
 			expected: 2,
 		},
 	}
@@ -141,7 +141,7 @@ func TestError_Wrap(t *testing.T) {
 
 	peTemplate := New("predefined error").StatusCode(500).Protected(true)
 	peTemplateWithFields := New("predefined error with fields").StatusCode(500).Protected(true).Set("key", "value")
-	e := Error{attrs: attrs{message: "test error"}}
+	e := Error{metadata: metadata{message: "test error"}}
 
 	tests := []struct {
 		name string
@@ -165,11 +165,11 @@ func TestError_Wrap(t *testing.T) {
 		},
 		{
 			name: "Wrap raised predefined error with attributes",
-			err:  New("test error").Set("key1", "value1").Raise().StatusCode(500).Code("X-0001"),
+			err:  New("test error").Set("key1", "value1").Build().StatusCode(500).Code("X-0001"),
 		},
 		{
 			name: "Wrap raised error",
-			err:  New("test error").Raise(),
+			err:  New("test error").Build(),
 		},
 		{
 			name: "Wrap non-raised error",
@@ -179,7 +179,7 @@ func TestError_Wrap(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := peTemplate.Raise().Wrap(tt.err)
+			err := peTemplate.Build().Wrap(tt.err)
 			if tt.err == nil {
 				if !Is(err, err) {
 					t.Errorf("expected wrapped error %v, got %v", tt.err, err.err)
@@ -193,7 +193,7 @@ func TestError_Wrap(t *testing.T) {
 		})
 
 		t.Run(tt.name+" with fields", func(t *testing.T) {
-			err := peTemplateWithFields.Raise().Wrap(tt.err)
+			err := peTemplateWithFields.Build().Wrap(tt.err)
 			if tt.err == nil {
 				if !Is(err, err) {
 					t.Errorf("expected wrapped error %v, got %v", tt.err, err.err)
@@ -249,31 +249,31 @@ func TestError_Error(t *testing.T) {
 			name:     "single non wrapping error",
 			expected: "test error",
 			err: &Error{
-				attrs: attrs{message: "test error"},
+				metadata: metadata{message: "test error"},
 			},
 		},
 		{
 			name:     "wrapped error",
 			expected: "outer error: inner error",
 			err: &Error{
-				attrs: attrs{message: "outer error"},
-				err:   errors.New("inner error"),
+				metadata: metadata{message: "outer error"},
+				err:      errors.New("inner error"),
 			},
 		},
 		{
 			name:     "wrapped standard error",
 			expected: "outer error: file does not exist",
 			err: &Error{
-				attrs: attrs{message: "outer error"},
-				err:   os.ErrNotExist,
+				metadata: metadata{message: "outer error"},
+				err:      os.ErrNotExist,
 			},
 		},
 		{
 			name:     "wrapped standard error without message",
 			expected: "outer error",
 			err: &Error{
-				attrs: attrs{message: "outer error"},
-				err:   se.New(""),
+				metadata: metadata{message: "outer error"},
+				err:      se.New(""),
 			},
 		},
 	}
@@ -291,7 +291,7 @@ func TestError_Alarm(t *testing.T) {
 	mock := &MockAlarmer{}
 	SetAlarmer(mock)
 
-	testErr := New("test error").Raise()
+	testErr := New("test error").Build()
 	testErr.Alarm()
 
 	if !mock.called {
