@@ -7,7 +7,7 @@ import (
 )
 
 func TestWrap(t *testing.T) {
-	var err = New("test error")
+	var err = Template("test error")
 	var wrappedBaseErr = fmt.Errorf("wrapped error: %w", os.ErrNotExist)
 
 	test := []struct {
@@ -55,7 +55,7 @@ func TestWrap(t *testing.T) {
 
 func TestIs(t *testing.T) {
 
-	var err = New("test error")
+	var err = Template("test error")
 	var wrappedBaseErr = fmt.Errorf("wrapped error: %w", os.ErrNotExist)
 	tests := []struct {
 		name     string
@@ -77,7 +77,7 @@ func TestIs(t *testing.T) {
 		},
 		{
 			name:     "Different error",
-			err:      New("different error"),
+			err:      Template("different error"),
 			target:   err,
 			expected: false,
 		},
@@ -135,7 +135,7 @@ func TestAs(t *testing.T) {
 				t.Errorf("expected panic, did not catch it")
 			}
 		}()
-		As(New("test error"), nil)
+		As(Template("test error"), nil)
 	})
 
 	t.Run("err and target are predefined errors", func(t *testing.T) {
@@ -144,7 +144,7 @@ func TestAs(t *testing.T) {
 				t.Errorf("expected panic, did not catch it")
 			}
 		}()
-		As(New("test error"), New("test error"))
+		As(Template("test error"), Template("test error"))
 	})
 
 	t.Run("standard error", func(t *testing.T) {
@@ -155,8 +155,8 @@ func TestAs(t *testing.T) {
 	})
 
 	t.Run("with Error", func(t *testing.T) {
-		err := New("test error").Build().Set("key", "value")
-		target := New("test error").Build()
+		err := Template("test error").New().Set("key", "value")
+		target := Template("test error").New()
 		if !As(err, &target) {
 			t.Errorf("expected true, got false")
 		}
@@ -165,16 +165,16 @@ func TestAs(t *testing.T) {
 		}
 	})
 	t.Run("with wrapped Error", func(t *testing.T) {
-		err := New("inner error").Build().Wrap(os.ErrNotExist)
-		werr := New("outer error").Build().Wrap(err)
+		err := Template("inner error").New().Wrap(os.ErrNotExist)
+		werr := Template("outer error").New().Wrap(err)
 
 		if !As(werr, &err) {
 			t.Errorf("expected true, got false")
 		}
 	})
 	t.Run("with wrapped predefined error", func(t *testing.T) {
-		pe := New("predefined error")
-		err := New("outer error").Build().Wrap(pe)
+		pe := Template("predefined error")
+		err := Template("outer error").New().Wrap(pe)
 
 		defer func() {
 			if r := recover(); r == nil {

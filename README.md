@@ -1,4 +1,4 @@
-# errors 
+# errors
 
 [![Build Status](https://github.com/axkit/errors/actions/workflows/go.yml/badge.svg)](https://github.com/axkit/errors/actions)
 [![Go Report Card](https://goreportcard.com/badge/github.com/axkit/errors)](https://goreportcard.com/report/github.com/axkit/errors)
@@ -7,26 +7,82 @@
 
 The errors package provides an enterprise-grade error handling approach.
 
-## Overview
-This Go package provides a robust framework for error handling with advanced features tailored for enterprise-grade applications. It introduces structured error templates with attributes like severity, status codes, and more, ensuring both clarity and utility when diagnosing issues in production environments.
+## Motivation
 
-### Key Features
-- **Structured Error Attributes**: Add metadata like severity level, application-specific codes, and HTTP status codes.
-- **Error Wrapping**: Seamlessly wrap errors to maintain stack trace and additional context.
-- **Predefined Errors**: Declare reusable error templates for consistency.
-- **JSON Formatting**: Serialize errors into JSON differently for API responses and logging.
-- **Severity Levels**: Classify errors as `Tiny`, `Medium`, or `Critical` for proper handling.
-- **Stack Frames**: Capture detailed call stacks for debugging.
-- **Alarmer Interface**: Automatically notify administrators of critical errors.
+### 1. Unique Error Codes for Client Support
 
+In many corporate applications, it’s not enough for a system to return an error - it must also return a unique, user-facing error code. This code allows end users or support engineers to reference documentation or helpdesk pages that explain what the error means, under what conditions it might occur, and how to resolve it.
+
+These codes serve as stable references and are especially valuable in systems where frontend, backend, and support operations must all stay synchronized on error semantics.
+
+### 2. Centralized Error Definitions
+
+To make error codes reliable and consistent, they must be centrally defined and maintained in advance. Without such coordination, teams risk introducing duplicate codes, inconsistent messages, or undocumented behaviors. This package was built to support structured error registration and reuse across the entire application.
+
+### 3. Logging at the Top Level & Contextual Information in Errors
+
+There is an important idiom: log errors only once, and do it as close to the top of the call stack as possible — for instance, in an HTTP controller. Lower layers (business logic, database, etc.) may wrap and propagate errors upward, but only the outermost layer should produce the log entry.
+
+This pattern, while clean and idiomatic, introduces a challenge: how can we include rich, contextual information at the logging point, if it was only known deep inside the application?
+
+To solve this, we need errors that are context-aware. That is, they should carry structured attributes — like the IP address of a failing server, or the input that triggered the issue — as they move up the call stack. This package provides facilities to attach such structured context to errors and extract it later during logging or formatting.
+
+### 4. Stack Traces for Root Cause Analysis
+
+When diagnosing production issues, developers need more than just error messages — they need stack traces that show where the error originated. This is especially important when multiple wrapping or rethrowing occurs. By capturing the trace at the point of error creation, this package enables faster debugging and clearer logs.
 
 ## Installation
+
 ```bash
 go get github.com/axkit/errors
 ```
 
+## Error Template
+
+Predefined errors offer reusable templates for consistent error creation. Use the `Template` function to declare them:
+
+```go
+import "github.com/axkit/errors"
+
+var (
+    ErrInvalidInput = errors.Template("invalid input provided").
+							Code("CRM-0901").
+							StatusCode(400).
+							Severity(errors.Tiny)
+    
+	ErrServiceUnavailable = errors.Template("service unavailable").
+							Code("SRV-0253").
+							StatusCode(500).
+							Severity(errors.Critical)
+
+	// Predefined error gets `Tiny` severity  by default.
+	ErrInvalidFilter = errors.Template("invalid filtering rule").
+							Code("CRM-0042").
+							StatusCode(400)
+
+)
+
+if request.Email == "" {
+	return ErrInvalidInput.New().Msg("empty email")
+}
+
+if request.Age < 18 {
+	return ErrInvalidInput.New().Set("age", request.Age).Msg("invalid age")
+}
+
+customer, err := service.CustomerByID(request.CustomerID)
+if err != nil {
+	return ErrServiceUnavailable.Wrap(err)
+}
+
+if customer == nil {
+	return ErrInvalidInput.New().Msg("invalid customer")
+}
+
+```
 
 ## Error Structure
+
 The `Error` type is the core of this package. It encapsulates metadata, stack traces, and wrapped errors.
 
 ### Attributes
@@ -36,208 +92,125 @@ The `Error` type is the core of this package. It encapsulates metadata, stack tr
 | `severity`  | Severity of the error (Tiny, Medium, Critical) |
 | `statusCode`| HTTP status code                               |
 | `code`      | Application-specific error code                |
-| `protected` | Indicates that error's attributes shall not leak to the client.            |
 | `fields`    | Custom key-value pairs for additional context  |
 | `stack`     | Stack frames showing the call trace            |
 
+## Capturing the Stack Trace
 
-## Error Template
-Predefined errors offer reusable templates for consistent error creation. Use the `New` function to declare them:
+A stack trace is automatically captured at the moment an error is created or first wrapped. This allows developers to identify where the problem originated, even if the error travels up the call stack.
+
+A stack trace is captured when one of the following methods is called:
+
+- errors.TemplateError.Wrap(...)
+- errors.TemplateError.New(...)
+- errors.Wrap(...)
+
+> Rewrapping an error does not overwrite an existing stack trace. The original call site remains preserved, ensuring consistent and reliable debugging information.
+
+## Why `errors.New()` Is Not Provided
+
+The `axkit/errors` package intentionally avoids exposing a global New() function, unlike the standard errors.New(...).
+
+This is a deliberate design choice for two reasons:
+
+### 1. Encouraging Structured, Predefined Errors
+
+Instead of scattering ad-hoc error messages, you define reusable error templates with metadata (code, severity, status) and create instances using:
 
 ```go
+var ErrInvalidInput = errors.Template("invalid input").Code("CRM-0400").StatusCode(400)
 
-import "github.com/axkit/errors"
-
-var (
-    ErrInvalidInput = errors.New("invalid input provided").
-							Code("VAL-0901").
-							StatusCode(400).
-							Severity(errors.Tiny)
-    
-	ErrDatabaseDown = errors.New("database is unreachable").
-							Code("DBA-0253").
-							StatusCode(500).
-							Severity(errors.Critical)
-
-	// Predefined error gets `Tiny` severity  by default.
-	ErrInvalidFilter = errors.New("invalid filtering rule").
-							Code("VAL-0900").
-							StatusCode(400)
-
-)
-
-if err := db.Ping(ctx); err != nil {
-	return ErrDatabaseDown.Wrap(err)
-}
-
-
+return ErrInvalidInput.New()
 ```
 
+This enables centralized error definitions, consistent metadata, and better observability.
 
+### 2. Avoiding Ambiguity in Usage
 
+In Go, `errors.New(...)` is used in two very different ways:
 
-## Examples
-
-### Basic Error Creation
-The same way as standard error. Can be extended by metadata.
+- Defining a global error variable:
 
 ```go
-package main
-
-import (
-    "fmt"
-    "github.com/axkit/errors"
-)
-
-func main() {
-
-	var err1 = errors.New("something went wrong")
-    var err2 = errors.New("something went wrong").Code("E1001").Severity(errors.Medium)
-    
-	fmt.Println(err1.Error()) // something went wrong
-	fmt.Println(err2.Error()) // something went wrong
-	fmt.Println(errors.JSON(err)) // 
-
-}
+var ErrSomething = errors.New("something went wrong")
+return ErrSomething
 ```
 
-### Wrapping Errors
+- Creating and returning an error immediately:
+
 ```go
-wrappedErr := errors.New("Outer error").Wrap(errors.New("Inner error"))
-fmt.Println(wrappedErr.Error())
+return errors.New("invalid request")
 ```
 
-### Using Predefined Errors
-```go
-if err := someDatabaseOperation(); err != nil {
-    return ErrDatabaseDown.Wrap(err)
-}
-```
+It is impossible to implement a single `New(...)` function that satisfies both cases cleanly:
+
+- If it returns an `ErrorTemplate`, there’s no stack trace—good for global constants, but incomplete if returned immediately.
+- If it returns an `Error`, it captures a stack trace—good for immediate returns, but undesirable in global var declarations (stack is static and misleading).
+
+In short, each use case demands a different behavior. This encourages clarity and helps avoid subtle bugs caused by unintended stack traces.
+
+## Error Logging
+
+Effective error logging is crucial for debugging and monitoring. This package encourages logging errors at the topmost layer of the application, such as an HTTP controller, while lower layers propagate errors with additional context. This ensures that logs are concise and meaningful.
 
 ```go
+var ErrInvalidObjectID = errors.Template("inalid object id").Code("CRM-0400").StatusCode(400)
 
-import "github.com/axkit/errors"
-
-var ErrObjectNotFound = errors.New("object not found").Code("CMN-0404")
-							
-func (r *CustomerRepo)CustomerByID(customerID int) (CustomerDto, error)  
-   customer, ok := customers[customerID]
-   if !ok {
-		return ErrObjectNotFound.Raise().Set("customerID", customerID)
-   }
-
-   return customer, nil 
+customer, err := repo.CustomerByID(customerID)
+if err != nil && errors.Is(err, repo.ErrNotFound) {
+    return nil, ErrInvalidObjectID.Wrap(err).Set("customerId", customerID)
 }
-
-// 
-// ...
-// 
-func (s *CustomerService)CustomerByID(customerID int, requestedBy string) (*Customer, error) {
-
-	c, err := s.repo.CustomerByID(customerID)
-	if err != nil {
-		return nil, errors.Wrap(err, "customer not found").Set("requestedBy", requestedBy).Sererity(errors.Medium)
-	}
-
-	return convertDto(c), nil 
-}
-
+////  
+///
 //
-// ... 
-//
-var ErrCustomerNotFound = errors.New("customer not found").Code("CRM-0404")
-func (s *CustomerService)CustomerBySSN(ssn string, requestedBy string) (*Customer, error) {
-
-	c, err := s.repo.CustomerBySSN(ssn)
-	if err != nil {
-		return nil, ErrorCustomerNotFound.Wrap(err)
-	}
-
-	return convertDto(c), nil 
+customer, err := service.CustomerByID(customerID)
+if err != nil {
+	buf := errors.ToJSON(err, errors.WithAttributes(errors.AddStack)))
+	log.Println(string(buf))
 }
- 
-```
-### JSON Formatting
-```go
-jsonErr := errors.New("Resource not found").Code("E404").StatusCode(404)
-fmt.Println(string(errors.ToJSON(jsonErr, errors.WithAttributes(errors.AddStack))))
 ```
 
-### Alarm Notifications
+### Custom JSON Serialization
+
+If you need to implement a custom JSON serializer, the `errors.Serialize(err)` method provides an object containing all public attributes of the error. This allows you to define your own serialization logic tailored to your application's requirements.
+
+## Alarm Notifications
+
 Set an alarmer to notify on critical errors: 
+
 ```go
 type CustomAlarmer struct{}
 
-func (c *CustomAlarmer) Alarm(err error) {
+func (c *CustomAlarmer) Alarm(se *SerializedError) {
     fmt.Println("Critical error:", err)
 }
 
 errors.SetAlarmer(&CustomAlarmer{})
-errors.New("message queue connection failure").Severity(errors.Critical).Alarm()
+
+var ErrConsistencyFailed = errors.Template("data consistency failed").Severity(errors.Critical) 
+
+// CustomAlarmer.Alarm() will be invocated automatically (severity=Critical)
+return ErrDataseConnectionFailure.New()
 ```
 
-## Why Use This Package?
-
-- **Support simplification**: Assigning a business code to each error allows for detailed documentation of possible causes and solutions for resolving them.   
-- **Consistency**: Predefined errors enforce uniform error handling across the codebase.
-- **Improved Observability**: Structured errors with stack traces and metadata provide clarity in debugging.
-- **JSON Serialization**: Convert errors to JSON for external logging or API error responses.
-- **Actionable Severity Levels**: Severity classification helps prioritize critical issues.
-- **Extensibility**: Use custom alarmers to integrate with monitoring systems.
-
 ## Severity Levels
+
 The package classifies errors into three severity levels:
+
 - **Tiny**: Minor issues, typically validation errors.
 - **Medium**: Regular errors that log stack traces.
 - **Critical**: Major issues requiring immediate attention.
 
+When wrapping errors, the `severity` and `statusCode` attributes can be overridden. The client will always receive the latest `severity` and `statusCode` values from the outermost error. Any inner errors even with higher severity or different status codes will only be logged, ensuring that the most relevant information is presented to the client while maintaining detailed logs for debugging purposes.
+
 ---
 
 ## Contributing
+
 Contributions are welcome! Please submit issues or pull requests on [GitHub](https://github.com/axkit/errors).
 
 ---
 
 ## License
+
 This project is licensed under the MIT License.
-
-
-
-
-
-
-
-
-
-
-
-In large and complex applications, each error typically has a unique code. Using this code, you can find in the documentation the possible causes of the error and the ways to resolve it. This package allows you to define a list of errors with specific attributes: error code, message text, corresponding HTTP status code, and severity level.
-
-Example:
-```go 
-var ErrInvalidCustomerID = errors.New("invalid customer id").
-    StatusCode(400).
-    Code("ERR-0199").
-    Severity(errors.Medium)
-```
-With a unique error code, we can direct the user to the page
-`https://mysomeservice.com/content/errors/ERR-0199`
-where the causes of the error and methods for resolving it will be described in detail, if necessary.
-
-Any predefined error is instantiated and transformed into an Error object when the Raise method is invoked.
-Additionally, key-value pairs can be attached to the error, which can be viewed by the administrator in the logs,
-all predefined attributes cab be reassigned.
-
-```go
-    // type request struct {
-	//		SessionID int 
-	//		CustomerID int 
-	// 		CustomerFirstName string  
-	// }
-
-	if request.CustomerID <= 0 {
-		return ErrInvalidCustomerID.Raise().
-			Set("sessionId", request.SessionID).
-			Severity(errors.Critical)
-	}
-```

@@ -125,7 +125,7 @@ func TestWithRootLevelFieldsEmpty(t *testing.T) {
 }
 
 func TestToJSONWithContext(t *testing.T) {
-	embeddedError := New("embedded error").Code("E1234").StatusCode(400)
+	embeddedError := Template("embedded error").Code("E1234").StatusCode(400)
 	err := &Error{
 		metadata: metadata{
 			message:    "test error",
@@ -219,7 +219,7 @@ func TestToJSON_error(t *testing.T) {
 }
 
 func TestToJSON_identMarshal(t *testing.T) {
-	err := New("test error").Build()
+	err := Template("test error").New()
 	expectedResponse := `{
   "msg": "test error",
   "severity": "tiny"

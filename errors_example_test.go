@@ -6,53 +6,34 @@ import (
 	"github.com/axkit/errors"
 )
 
-func ExampleNew_one() {
-
-	var ErrInvalidInput = errors.New("invalid input").
-		Code("CMN-0400").
-		StatusCode(400).
-		Severity(errors.Tiny)
-
-	fmt.Println(ErrInvalidInput)
-	// Output: invalid input
-}
-
-func ExampleNew_two() {
-
-	var ErrSimpleError = errors.New("simple error")
-
-	fmt.Println(ErrSimpleError.Error())
-	// Output: simple error
-}
-
 func ExampleError_Error() {
 
 	type Input struct {
-		ID        int    `json:id"`
+		ID        int    `json:"id"`
 		FirstName string `json:"firstName"`
 		LastName  string `json:"lastName"`
 	}
 
-	var ErrEmptyAttribute = errors.New("empty attribute value").Code("CMN-0400")
-	var ErrInvalidInput = errors.New("invalid input").Code("CMN-0400")
+	var ErrEmptyAttribute = errors.Template("empty attribute value").Code("CMN-0400")
+	var ErrInvalidInput = errors.Template("invalid input").Code("CMN-0400")
 
 	validateInput := func(inp *Input) error {
 		if inp.ID == 0 {
-			return ErrEmptyAttribute.Build().Set("emptyFields", []string{"id"})
+			return ErrEmptyAttribute.New().Set("emptyFields", []string{"id"})
 		}
 		return nil
 	}
 
 	if err := validateInput(&Input{}); err != nil {
 		returnErr := ErrInvalidInput.Wrap(err)
-		fmt.Printf(returnErr.Error())
+		fmt.Println(returnErr.Error())
 		// Output: invalid input: empty attribute value
 	}
 }
 
 // ExampleToJSON demonstrates generating JSON output for an error.
 func ExampleToJSON() {
-	jsonErr := errors.New("User not found").Code("E404").StatusCode(404).Severity(errors.Tiny)
+	jsonErr := errors.Template("User not found").Code("E404").StatusCode(404).Severity(errors.Tiny)
 	jsonOutput := errors.ToJSON(jsonErr, errors.WithAttributes(errors.AddFields))
 	fmt.Println("JSON Error:", string(jsonOutput))
 	// Output: JSON Error: {"msg":"User not found","severity":"tiny","code":"E404","statusCode":404}
@@ -60,15 +41,15 @@ func ExampleToJSON() {
 
 // ExampleWrap demonstrates wrapping an error.
 func ExampleWrap() {
-	innerErr := errors.New("Database connection failed")
-	outerErr := errors.New("Service initialization failed").Wrap(innerErr)
+	innerErr := errors.Template("Database connection failed")
+	outerErr := errors.Template("Service initialization failed").Wrap(innerErr)
 	fmt.Println("Wrapped Error:", outerErr.Error())
 	// Output: Wrapped Error: Service initialization failed: Database connection failed
 }
 
 // ExamplePredefinedErrors demonstrates using predefined errors.
 func ExampleErrorTemplate() {
-	var ErrDatabaseDown = errors.New("Database is unreachable").
+	var ErrDatabaseDown = errors.Template("Database is unreachable").
 		Code("DB-500").
 		StatusCode(500).
 		Severity(errors.Critical)
@@ -90,9 +71,9 @@ func (c *CustomAlarmer) Alarm(err error) {
 func ExampleAlarmer() {
 
 	errors.SetAlarmer(&CustomAlarmer{})
-	var ErrSystemFailure = errors.New("system failure").Severity(errors.Critical)
+	var ErrSystemFailure = errors.Template("system failure").Severity(errors.Critical)
 
-	ErrSystemFailure.Build().Set("path", "/var/lib").Alarm()
+	ErrSystemFailure.New().Set("path", "/var/lib").Alarm()
 
 	// Output: Critical error: system failure
 }

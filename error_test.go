@@ -48,7 +48,7 @@ func TestError(t *testing.T) {
 		{
 			name:       "wrap raised error",
 			msg:        "test error",
-			err:        New("test error").Build(),
+			err:        Template("test error").New(),
 			code:       "X-0001",
 			statusCode: 500,
 			severity:   Critical,
@@ -58,13 +58,13 @@ func TestError(t *testing.T) {
 
 	for _, tt := range tcases {
 		t.Run(tt.name, func(t *testing.T) {
-			pe1 := New(tt.msg).
+			pe1 := Template(tt.msg).
 				Code(tt.code).
 				StatusCode(tt.statusCode).
 				Severity(tt.severity).Protected(true)
 			err := pe1.Wrap(tt.err)
 
-			pe2 := New(tt.msg).Wrap(tt.err)
+			pe2 := Template(tt.msg).Wrap(tt.err)
 			pe2.Code(tt.code).
 				StatusCode(tt.statusCode).
 				Severity(tt.severity).Protected(true).
@@ -139,8 +139,8 @@ func TestError_WrappedErrors(t *testing.T) {
 
 func TestError_Wrap(t *testing.T) {
 
-	peTemplate := New("predefined error").StatusCode(500).Protected(true)
-	peTemplateWithFields := New("predefined error with fields").StatusCode(500).Protected(true).Set("key", "value")
+	peTemplate := Template("predefined error").StatusCode(500).Protected(true)
+	peTemplateWithFields := Template("predefined error with fields").StatusCode(500).Protected(true).Set("key", "value")
 	e := Error{metadata: metadata{message: "test error"}}
 
 	tests := []struct {
@@ -165,11 +165,11 @@ func TestError_Wrap(t *testing.T) {
 		},
 		{
 			name: "Wrap raised predefined error with attributes",
-			err:  New("test error").Set("key1", "value1").Build().StatusCode(500).Code("X-0001"),
+			err:  Template("test error").Set("key1", "value1").New().StatusCode(500).Code("X-0001"),
 		},
 		{
 			name: "Wrap raised error",
-			err:  New("test error").Build(),
+			err:  Template("test error").New(),
 		},
 		{
 			name: "Wrap non-raised error",
@@ -179,7 +179,7 @@ func TestError_Wrap(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := peTemplate.Build().Wrap(tt.err)
+			err := peTemplate.New().Wrap(tt.err)
 			if tt.err == nil {
 				if !Is(err, err) {
 					t.Errorf("expected wrapped error %v, got %v", tt.err, err.err)
@@ -193,7 +193,7 @@ func TestError_Wrap(t *testing.T) {
 		})
 
 		t.Run(tt.name+" with fields", func(t *testing.T) {
-			err := peTemplateWithFields.Build().Wrap(tt.err)
+			err := peTemplateWithFields.New().Wrap(tt.err)
 			if tt.err == nil {
 				if !Is(err, err) {
 					t.Errorf("expected wrapped error %v, got %v", tt.err, err.err)
@@ -291,7 +291,7 @@ func TestError_Alarm(t *testing.T) {
 	mock := &MockAlarmer{}
 	SetAlarmer(mock)
 
-	testErr := New("test error").Build()
+	testErr := Template("test error").New()
 	testErr.Alarm()
 
 	if !mock.called {

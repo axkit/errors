@@ -11,10 +11,10 @@ type ErrorTemplate struct {
 	fields map[string]any
 }
 
-// New returns a new ErrorTemplate initialized with the given message.
+// Template returns a new ErrorTemplate initialized with the given message.
 // It can be extended with additional attributes and reused to create
 // multiple error instances.
-func New(msg string) *ErrorTemplate {
+func Template(msg string) *ErrorTemplate {
 	return &ErrorTemplate{
 		metadata: metadata{
 			message: msg,
@@ -86,9 +86,9 @@ func (et *ErrorTemplate) Wrap(err error) *Error {
 	}
 }
 
-// Build creates a new Error instance using the template's metadata and fields.
+// New creates a new Error instance using the template's metadata and fields.
 // A new stack trace is captured at the point of the call.
-func (et *ErrorTemplate) Build() *Error {
+func (et *ErrorTemplate) New() *Error {
 	return &Error{
 		metadata: et.metadata,
 		fields:   cloneMap(et.fields),

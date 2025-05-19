@@ -8,7 +8,7 @@ import (
 
 func TestErrorTemplate(t *testing.T) {
 	msg := "test error"
-	err := New(msg)
+	err := Template(msg)
 	if err.message != msg {
 		t.Errorf("expected message %q, got %q", msg, err.message)
 	}
@@ -22,7 +22,7 @@ func TestErrorTemplate_Wrap(t *testing.T) {
 
 	filename := "non-existing-file"
 
-	var ErrConfigFileNotFound = New("config file not found").
+	var ErrConfigFileNotFound = Template("config file not found").
 		StatusCode(http.StatusInternalServerError).
 		Severity(Critical)
 
@@ -53,8 +53,8 @@ func TestErrorTemplate_Wrap(t *testing.T) {
 }
 
 func TestErrorTemplate_Raise(t *testing.T) {
-	pe := New("predefined error")
-	raisedErr := pe.Build()
+	pe := Template("predefined error")
+	raisedErr := pe.New()
 
 	if raisedErr.metadata.message != pe.metadata.message {
 		t.Errorf("expected message %q, got %q", pe.metadata.message, raisedErr.metadata.message)
@@ -62,7 +62,7 @@ func TestErrorTemplate_Raise(t *testing.T) {
 }
 
 func TestErrorTemplate_Set(t *testing.T) {
-	pe := New("predefined error")
+	pe := Template("predefined error")
 	key, value := "key", "value"
 	pe.Set(key, value)
 
@@ -72,7 +72,7 @@ func TestErrorTemplate_Set(t *testing.T) {
 }
 
 func TestErrorTemplate_Attrs(t *testing.T) {
-	pe := New("predefined error")
+	pe := Template("predefined error")
 
 	// Test Code
 	code := "E123"
@@ -104,7 +104,7 @@ func TestErrorTemplate_Attrs(t *testing.T) {
 }
 
 func TestErrorTemplate_CloneFields(t *testing.T) {
-	pe := New("predefined error")
+	pe := Template("predefined error")
 	pe.Set("key1", "value1")
 	pe.Set("key2", "value2")
 

@@ -7,7 +7,7 @@ import (
 	"github.com/tidwall/sjson"
 )
 
-var ErrMarshalError = New("error marshaling failed").Severity(Critical).StatusCode(500)
+var ErrMarshalError = Template("error marshaling failed").Severity(Critical).StatusCode(500)
 
 type ErrorSerializationRule uint8
 
@@ -92,7 +92,7 @@ func Serialize(err error, opts ...Option) *SerializedError {
 func serialize(err error, option ErrorFormattingOptions) *SerializedError {
 	switch e := err.(type) {
 	case *ErrorTemplate:
-		return serializeError(e.Build(), option)
+		return serializeError(e.New(), option)
 	case *Error:
 		return serializeError(e, option)
 	case interface{ Error() string }:
