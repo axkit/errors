@@ -179,6 +179,117 @@ The package classifies errors into three severity levels:
 
 When wrapping errors, the `severity` and `statusCode` attributes can be overridden. The client will always receive the latest `severity` and `statusCode` values from the outermost error. Any inner errors even with higher severity or different status codes will only be logged, ensuring that the most relevant information is presented to the client while maintaining detailed logs for debugging purposes.
 
+## Migration Guide
+
+Below is a categorized list of how errors are typically created or obtained in Go code. These represent common entry points for error handling.
+
+```go
+
+// 1. plain, unstructured error
+return errors.New("message") 
+
+// 2. formatted, unstructured 
+return fmt.Errorf("something failed") 
+
+// 3. wrapping + formatting
+return fmt.Errorf("wrap: %w", err) 
+
+// 4. Custom struct implementing error
+return &CustomError{}
+
+// 5. External packages returning error values
+rows, err := db.Query("SELECT COUNT(1) FROM customers")
+if err != nil {
+	return nil, err 
+}
+
+// 6. shared "constants"
+var ErrX = errors.New("...")
+
+// 7. Sentinel errors for comparison via errors.Is(...)
+// 8. Errors returned from standard library or external packages(e.g., io.EOF, pgx.ErrNoRows) 
+```
+
+### Migration Strategy
+
+Migrating to `axkit/errors` can be done incrementally, without needing to rewrite your entire codebase at once. The primary goal is to transition from unstructured error handling to a system of reusable, structured templates with support for metadata, stack traces, and observability.
+
+#### Step 1: Replace the Import
+
+Start by replacing the standard library import:
+
+```go
+import "errors"
+````
+
+with:
+
+```go
+import "github.com/axkit/errors"
+```
+
+This change is non-breaking: errors.New(...)  remains available and behaves the same way, returning a basic error without stack trace. This allows your application to compile and function as before.
+
+
+#### Step 2: Identify and Replace Static Errors with Templates
+
+Begin replacing predefined or shared errors like:
+
+```go
+var ErrUnauthorized = errors.New("unauthorized")
+```
+
+with structured templates:
+
+```go
+var ErrUnauthorized = errors.Template("unauthorized").
+	Code("AAA-0401").
+	StatusCode(401).
+	Severity(Tiny)
+```
+
+I recommend placing templates at the top of each file or organizing them into a dedicated file such as errors.go, error_templates.go, etc.
+
+#### Step 3: Wrap External or Lower-Level Errors
+
+Whenever you receive an error from the standard library or a third-party package (e.g. pgx.ErrNoRows, io.EOF, sql.ErrTxDone), wrap it in your own context using a template:
+
+```go
+customers, err := s.repo.CustomerByID(customerID)
+if err == pgx.ErrNoRows {
+	return ErrCustomerNotFound.Wrap(err)
+}
+```
+
+If no reusable template exists yet, it’s acceptable to inline one during early migration:
+
+```go
+customers, err := s.repo.CustomerByID(customerID)
+if err == pgx.ErrNoRows {
+	return errors.Wrap(err, "customer not found").StatusCode(400).Set("customerId", customerID)
+}
+```
+
+### Step 4: Centralize and Document Templates
+
+As migration progresses, ensure that all templates:
+
+- Have a unique Code(...) identifier
+- Are grouped and reusable
+- Are linked to documentation or support systems (e.g. HelpDesk, monitoring, alerting)
+- Capture stack trace at the appropriate level via .New() or .Wrap()
+
+This ensures a consistent and observable error-handling experience across your application.
+
+#### Summary
+
+| Step    | Goal                                | Complexity         | Backward Compatible |
+|---------|-------------------------------------|--------------------|----------------------|
+| Step 1 | Replace standard import              | Very Low           | ✅ Yes               |
+| Step 2 | Use `Template` for shared errors     | Medium             | ✅ Yes               |
+| Step 3 | Wrap external or third-party errors  | Medium             | ✅ Yes               |
+| Step 4 | Centralize and document templates    | High (but worth it)| ✅ Yes               |
+
 ## License
 
 This project is licensed under the MIT License. See the `LICENSE` file for details.
