@@ -53,6 +53,16 @@ func (a *metadata) equal(b metadata) bool {
 		a.protected == b.protected
 }
 
+// New creates and returns a standard Go error using the built-in errors.New function.
+//
+// This is implemented to maintain compatibility with existing Go error handling practices.
+// However, the design philosophy of this package does not encourage the use of errors.New(msg)
+// as commonly practiced in Go. Instead, it promotes the use of structured and enriched error
+// handling mechanisms provided by this package.
+func New(msg string) error {
+	return se.New(msg)
+}
+
 // Wrap wraps an existing error with a new message, effectively creating
 // a new error that includes the previous error.
 func Wrap(err error, message string) *Error {

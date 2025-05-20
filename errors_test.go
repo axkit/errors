@@ -6,6 +6,18 @@ import (
 	"testing"
 )
 
+func TestNew(t *testing.T) {
+	msg := "test error"
+	err := New(msg)
+	if err == nil {
+		t.Errorf("expected non-nil error, got nil")
+	}
+
+	if err.Error() != msg {
+		t.Errorf("expected error message %q, got %q", msg, err.Error())
+	}
+}
+
 func TestWrap(t *testing.T) {
 	var err = Template("test error")
 	var wrappedBaseErr = fmt.Errorf("wrapped error: %w", os.ErrNotExist)

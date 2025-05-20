@@ -45,7 +45,7 @@ Predefined errors offer reusable templates for consistent error creation. Use th
 import "github.com/axkit/errors"
 
 var (
-    ErrInvalidInput = errors.Template("invalid input provided").
+	ErrInvalidInput = errors.Template("invalid input provided").
 							Code("CRM-0901").
 							StatusCode(400).
 							Severity(errors.Tiny)
@@ -125,30 +125,6 @@ return ErrInvalidInput.New()
 
 This enables centralized error definitions, consistent metadata, and better observability.
 
-### 2. Avoiding Ambiguity in Usage
-
-In Go, `errors.New(...)` is used in two very different ways:
-
-- Defining a global error variable:
-
-```go
-var ErrSomething = errors.New("something went wrong")
-return ErrSomething
-```
-
-- Creating and returning an error immediately:
-
-```go
-return errors.New("invalid request")
-```
-
-It is impossible to implement a single `New(...)` function that satisfies both cases cleanly:
-
-- If it returns an `ErrorTemplate`, there’s no stack trace—good for global constants, but incomplete if returned immediately.
-- If it returns an `Error`, it captures a stack trace—good for immediate returns, but undesirable in global var declarations (stack is static and misleading).
-
-In short, each use case demands a different behavior. This encourages clarity and helps avoid subtle bugs caused by unintended stack traces.
-
 ## Error Logging
 
 Effective error logging is crucial for debugging and monitoring. This package encourages logging errors at the topmost layer of the application, such as an HTTP controller, while lower layers propagate errors with additional context. This ensures that logs are concise and meaningful.
@@ -156,13 +132,13 @@ Effective error logging is crucial for debugging and monitoring. This package en
 ```go
 var ErrInvalidObjectID = errors.Template("inalid object id").Code("CRM-0400").StatusCode(400)
 
+// service.go
 customer, err := repo.CustomerByID(customerID)
 if err != nil && errors.Is(err, repo.ErrNotFound) {
     return nil, ErrInvalidObjectID.Wrap(err).Set("customerId", customerID)
 }
-////  
-///
-//
+
+// controller.go
 customer, err := service.CustomerByID(customerID)
 if err != nil {
 	buf := errors.ToJSON(err, errors.WithAttributes(errors.AddStack)))
@@ -203,14 +179,6 @@ The package classifies errors into three severity levels:
 
 When wrapping errors, the `severity` and `statusCode` attributes can be overridden. The client will always receive the latest `severity` and `statusCode` values from the outermost error. Any inner errors even with higher severity or different status codes will only be logged, ensuring that the most relevant information is presented to the client while maintaining detailed logs for debugging purposes.
 
----
-
-## Contributing
-
-Contributions are welcome! Please submit issues or pull requests on [GitHub](https://github.com/axkit/errors).
-
----
-
 ## License
 
-This project is licensed under the MIT License.
+This project is licensed under the MIT License. See the `LICENSE` file for details.
