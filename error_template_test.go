@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestErrorTemplate(t *testing.T) {
+func TestTemplate(t *testing.T) {
 	msg := "test error"
 	err := Template(msg)
 	if err.message != msg {
@@ -20,15 +20,23 @@ func TestErrorTemplate(t *testing.T) {
 
 func TestErrorTemplate_Wrap(t *testing.T) {
 
-	filename := "non-existing-file"
+	var (
+		filename               = "non-existing-file"
+		ErrFileNotFound        = Template("file not found")
+		ErrConfigReadingFailed = Template("config reading failed").
+					StatusCode(http.StatusInternalServerError).
+					Severity(Critical)
+	)
 
-	var ErrConfigFileNotFound = Template("config file not found").
-		StatusCode(http.StatusInternalServerError).
-		Severity(Critical)
+	_, osErr := os.OpenFile(filename, os.O_RDONLY, 0)
+	if osErr == nil {
+		t.Fatalf("expected error opening file %q", filename)
+	}
+	t.Run("correct Error", func(t *testing.T) {
 
-	if _, osErr := os.OpenFile(filename, os.O_RDONLY, 0); osErr != nil {
+		noFileErr := ErrFileNotFound.Wrap(osErr).Set("file", filename)
 
-		wErr := ErrConfigFileNotFound.Wrap(osErr).Set("file", filename)
+		wErr := ErrConfigReadingFailed.Wrap(noFileErr)
 
 		if len(wErr.stack) == 0 {
 			t.Error("expected stack trace to be populated")
@@ -42,68 +50,87 @@ func TestErrorTemplate_Wrap(t *testing.T) {
 			t.Errorf("expected field %q to be %q, got %q", "file", filename, fn)
 		}
 
-		if wErr.err != osErr {
-			t.Errorf("expected wrapped error %v, got %v", osErr, wErr.err)
+		if wErr.err != noFileErr {
+			t.Errorf("expected wrapped error %v, got %v", noFileErr, wErr.err)
 		}
 
-		if wErr.err.Error() != osErr.Error() {
+		if wErr.err.Error() != noFileErr.Error() {
 			t.Errorf("expected message %q, got %q", wErr.metadata.message, osErr.Error())
 		}
-	}
+	})
+	t.Run("manually created Error", func(t *testing.T) {
+		incorrectErr := &Error{}
+		err := ErrConfigReadingFailed.Wrap(incorrectErr)
+		if err.stack == nil {
+			t.Error("expected stack trace to be populated")
+		}
+	})
 }
 
-func TestErrorTemplate_Raise(t *testing.T) {
-	pe := Template("predefined error")
-	raisedErr := pe.New()
+func TestErrorTemplate_New(t *testing.T) {
+	et := Template("predefined error")
+	err := et.New()
 
-	if raisedErr.metadata.message != pe.metadata.message {
-		t.Errorf("expected message %q, got %q", pe.metadata.message, raisedErr.metadata.message)
+	if err.metadata.message != et.metadata.message {
+		t.Errorf("expected message %q, got %q", et.metadata.message, err.metadata.message)
+	}
+
+	if len(err.stack) == 0 {
+		t.Error("expected stack trace to be populated")
+	}
+}
+func TestErrorTemplate_Error(t *testing.T) {
+	msg := "predefined error"
+	et := Template(msg)
+
+	if et.Error() != msg {
+		t.Errorf("expected error message %q, got %q", msg, et.Error())
 	}
 }
 
 func TestErrorTemplate_Set(t *testing.T) {
-	pe := Template("predefined error")
-	key, value := "key", "value"
-	pe.Set(key, value)
 
-	if pe.fields[key] != value {
-		t.Errorf("expected field %q to be %q, got %q", key, value, pe.fields[key])
-	}
+	et := Template("predefined error")
+
+	t.Run("Set", func(t *testing.T) {
+		key, value := "key", "value"
+		et.Set(key, value)
+		if et.fields[key] != value {
+			t.Errorf("expected field %q to be %q, got %q", key, value, et.fields[key])
+		}
+	})
+
+	t.Run("Code", func(t *testing.T) {
+		code := "E123"
+		et.Code(code)
+		if et.code != code {
+			t.Errorf("expected code %q, got %q", code, et.code)
+		}
+	})
+	t.Run("Severity", func(t *testing.T) {
+		severity := SeverityLevel(Medium)
+		et.Severity(severity)
+		if et.severity != severity {
+			t.Errorf("expected severity %v, got %v", severity, et.severity)
+		}
+	})
+	t.Run("StatusCode", func(t *testing.T) {
+		statusCode := http.StatusBadRequest
+		et.StatusCode(statusCode)
+		if et.statusCode != statusCode {
+			t.Errorf("expected status code %d, got %d", statusCode, et.statusCode)
+		}
+	})
+	t.Run("Protected", func(t *testing.T) {
+		protected := true
+		et.Protected(protected)
+		if et.protected != protected {
+			t.Errorf("expected protected %v, got %v", protected, et.protected)
+		}
+	})
 }
 
-func TestErrorTemplate_Attrs(t *testing.T) {
-	pe := Template("predefined error")
-
-	// Test Code
-	code := "E123"
-	pe.Code(code)
-	if pe.code != code {
-		t.Errorf("expected code %q, got %q", code, pe.code)
-	}
-
-	// Test Severity
-	severity := SeverityLevel(1)
-	pe.Severity(severity)
-	if pe.severity != severity {
-		t.Errorf("expected severity %v, got %v", severity, pe.severity)
-	}
-
-	// Test StatusCode
-	statusCode := http.StatusBadRequest
-	pe.StatusCode(statusCode)
-	if pe.statusCode != statusCode {
-		t.Errorf("expected status code %d, got %d", statusCode, pe.statusCode)
-	}
-
-	// Test Protected
-	protected := true
-	pe.Protected(protected)
-	if pe.protected != protected {
-		t.Errorf("expected protected %v, got %v", protected, pe.protected)
-	}
-}
-
-func TestErrorTemplate_CloneFields(t *testing.T) {
+func TestCloneMap(t *testing.T) {
 	pe := Template("predefined error")
 	pe.Set("key1", "value1")
 	pe.Set("key2", "value2")

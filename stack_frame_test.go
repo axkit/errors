@@ -1,7 +1,6 @@
 package errors
 
 import (
-	"fmt"
 	"testing"
 )
 
@@ -21,8 +20,6 @@ func TestDefaultCallerFrames(t *testing.T) {
 			if len(frames) != tt.expectedFrames {
 				t.Errorf("Expected %d stack frames, got %d", tt.expectedFrames, len(frames))
 			}
-
-			fmt.Printf("frames: %v\n", frames)
 
 			for _, frame := range frames {
 				if frame.Function == "" {

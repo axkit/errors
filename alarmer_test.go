@@ -24,7 +24,7 @@ func TestSetAlarmer(t *testing.T) {
 	}
 }
 
-func TestAlarm(t *testing.T) {
+func TestAlarmer_Alarm(t *testing.T) {
 	mock := &MockAlarmer{}
 	SetAlarmer(mock)
 
