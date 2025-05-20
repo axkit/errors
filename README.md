@@ -107,24 +107,6 @@ A stack trace is captured when one of the following methods is called:
 
 > Rewrapping an error does not overwrite an existing stack trace. The original call site remains preserved, ensuring consistent and reliable debugging information.
 
-## Why `errors.New()` Is Not Provided
-
-The `axkit/errors` package intentionally avoids exposing a global New() function, unlike the standard errors.New(...).
-
-This is a deliberate design choice for two reasons:
-
-### 1. Encouraging Structured, Predefined Errors
-
-Instead of scattering ad-hoc error messages, you define reusable error templates with metadata (code, severity, status) and create instances using:
-
-```go
-var ErrInvalidInput = errors.Template("invalid input").Code("CRM-0400").StatusCode(400)
-
-return ErrInvalidInput.New()
-```
-
-This enables centralized error definitions, consistent metadata, and better observability.
-
 ## Error Logging
 
 Effective error logging is crucial for debugging and monitoring. This package encourages logging errors at the topmost layer of the application, such as an HTTP controller, while lower layers propagate errors with additional context. This ensures that logs are concise and meaningful.
@@ -132,17 +114,28 @@ Effective error logging is crucial for debugging and monitoring. This package en
 ```go
 var ErrInvalidObjectID = errors.Template("inalid object id").Code("CRM-0400").StatusCode(400)
 
-// service.go
+// customer_repo.go
+customerTable := velum.NewTable[Customer]("customers")
+
+customer, err := customerTable.GetByPK(ctx, db, customerID)
+return customer, err
+
+// customer_service.go
 customer, err := repo.CustomerByID(customerID)
 if err != nil && errors.Is(err, repo.ErrNotFound) {
     return nil, ErrInvalidObjectID.Wrap(err).Set("customerId", customerID)
 }
 
-// controller.go
+// customer_controller.go
 customer, err := service.CustomerByID(customerID)
 if err != nil {
-	buf := errors.ToJSON(err, errors.WithAttributes(errors.AddStack)))
+	buf := errors.ToJSON(err, errors.WithAttributes(errors.AddStack|errors.AddWrappedErrors))
+	
+	// server output (extended)
 	log.Println(string(buf))
+	
+	// client output (reduced)
+	buf = errors.ToJSON(err)
 }
 ```
 
