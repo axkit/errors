@@ -67,13 +67,13 @@ const (
 
 // SerializedError is serialization ready error.
 type SerializedError struct {
-	Message    string         `json:"msg"`
-	Severity   string         `json:"severity,omitempty"`
-	Code       string         `json:"code,omitempty"`
-	StatusCode int            `json:"statusCode,omitempty"`
-	Fields     map[string]any `json:"fields,omitempty"`
-	Wrapped    []Error        `json:"wrapped,omitempty"`
-	Stack      []StackFrame   `json:"stack,omitempty"`
+	Message    string            `json:"msg"`
+	Severity   string            `json:"severity,omitempty"`
+	Code       string            `json:"code,omitempty"`
+	StatusCode int               `json:"statusCode,omitempty"`
+	Fields     map[string]any    `json:"fields,omitempty"`
+	Wrapped    []SerializedError `json:"wrapped,omitempty"`
+	Stack      []StackFrame      `json:"stack,omitempty"`
 }
 
 // Serialize serializes the error to a SerializedError struct.
@@ -116,8 +116,21 @@ func serializeError(we *Error, option ErrorFormattingOptions) *SerializedError {
 	}
 
 	if option.include&AddWrappedErrors != 0 {
-		resp.Wrapped = we.WrappedErrors()
-		resp.Wrapped = resp.Wrapped[1:]
+		for _, xe := range we.WrappedErrors() {
+			tx := SerializedError{
+				Message:    xe.message,
+				Severity:   xe.severity.String(),
+				Code:       xe.code,
+				StatusCode: xe.statusCode,
+			}
+			if xe.pureWrapper && tx.Message == "" {
+				tx.Message = xe.err.Error()
+			}
+
+			resp.Wrapped = append(resp.Wrapped, tx)
+		}
+
+		//resp.Wrapped = resp.Wrapped[1:]
 	}
 
 	if option.include&AddStack != 0 && len(we.stack) > 0 {

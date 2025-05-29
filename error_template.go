@@ -70,19 +70,14 @@ func (et *ErrorTemplate) Wrap(err error) *Error {
 			}
 		}
 		return &res
-	case error:
-		return &Error{
-			metadata: et.metadata,
-			err:      err,
-			fields:   cloneMap(et.fields),
-			stack:    DefaultCallerFrames(1),
-		}
 	}
 
 	return &Error{
-		metadata: et.metadata,
-		fields:   cloneMap(et.fields),
-		stack:    DefaultCallerFrames(1),
+		metadata:    et.metadata,
+		pureWrapper: true,
+		err:         err,
+		fields:      cloneMap(et.fields),
+		stack:       DefaultCallerFrames(1),
 	}
 }
 

@@ -48,11 +48,8 @@ func (err *Error) WrappedErrors() []Error {
 				res = append(res, *x)
 			}
 			e = x.err
-		case *ErrorTemplate:
-			res = append(res, *x.toError())
-			e = nil
 		default:
-			res = append(res, Error{err: e})
+			res = append(res, Error{err: e, pureWrapper: true})
 			e = nil
 		}
 	}

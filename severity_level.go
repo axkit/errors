@@ -6,11 +6,12 @@ import "bytes"
 type SeverityLevel int
 
 const (
+	Unknown SeverityLevel = iota
 	// Tiny classifies expected, managed errors that do not require administrator attention.
 	// Writing a call stack to the journal file is not recommended.
 	//
 	// Example: error related to validation of entered form fields.
-	Tiny SeverityLevel = iota
+	Tiny
 
 	// Medium classifies a regular error. A call stack is written to the log.
 	Medium
