@@ -75,7 +75,7 @@ func (e *Error) Wrap(err error) *Error {
 			fields:      cloneMap(e.fields),
 			pureWrapper: true,
 			err:         err,
-			stack:       DefaultCallerFrames(1),
+			stack:       DefaultCallerFrames(3),
 		}
 	case *Error:
 		res := Error{
@@ -87,7 +87,7 @@ func (e *Error) Wrap(err error) *Error {
 		if x.stack != nil {
 			res.stack = x.stack
 		} else {
-			res.stack = DefaultCallerFrames(1)
+			res.stack = DefaultCallerFrames(3)
 		}
 		if len(x.fields) > 0 {
 			if res.fields == nil {
@@ -105,7 +105,7 @@ func (e *Error) Wrap(err error) *Error {
 		err:         err,
 		fields:      cloneMap(e.fields),
 		pureWrapper: true,
-		stack:       DefaultCallerFrames(1),
+		stack:       DefaultCallerFrames(3),
 	}
 }
 

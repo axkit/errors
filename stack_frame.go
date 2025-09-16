@@ -3,6 +3,7 @@ package errors
 import (
 	"fmt"
 	"runtime"
+	"strconv"
 )
 
 // StackFrame describes content of a single stack frame stored with error.
@@ -22,14 +23,14 @@ var (
 	CallerFramesFunc func(offset int) []StackFrame = DefaultCallerFrames
 
 	// CallingStackMaxLen holds maximum elements in the call frames.
-	CallingStackMaxLen int = 15
+	CallingStackMaxLen int = 16
 )
 
 // DefaultCallerFrames returns default implementation of call frames collector.
 func DefaultCallerFrames(offset int) []StackFrame {
-	res := make([]StackFrame, 0, 12)
+	res := make([]StackFrame, 0, CallingStackMaxLen)
 	pc := make([]uintptr, CallingStackMaxLen)
-	n := runtime.Callers(3+offset, pc)
+	n := runtime.Callers(offset, pc)
 	frames := runtime.CallersFrames(pc[:n])
 
 	for {
@@ -37,7 +38,7 @@ func DefaultCallerFrames(offset int) []StackFrame {
 		if !more {
 			break
 		}
-		res = append(res, StackFrame{Function: frame.Function, File: frame.File, Line: frame.Line})
+		res = append(res, StackFrame{Function: frame.Function, File: frame.File + ":" + strconv.Itoa(frame.Line), Line: frame.Line})
 	}
 	return res
 }
