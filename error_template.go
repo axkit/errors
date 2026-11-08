@@ -31,6 +31,7 @@ func (et *ErrorTemplate) Error() string {
 func (et *ErrorTemplate) toError() *Error {
 	return &Error{
 		metadata: et.metadata,
+		tpl:      et,
 		fields:   cloneMap(et.fields),
 	}
 }
@@ -44,6 +45,7 @@ func (et *ErrorTemplate) Wrap(err error) *Error {
 	case *ErrorTemplate:
 		return &Error{
 			metadata:    et.metadata,
+			tpl:         et,
 			fields:      cloneMap(et.fields),
 			pureWrapper: true,
 			err:         err,
@@ -52,6 +54,7 @@ func (et *ErrorTemplate) Wrap(err error) *Error {
 	case *Error:
 		res := Error{
 			metadata:    et.metadata,
+			tpl:         et,
 			fields:      cloneMap(et.fields),
 			pureWrapper: true,
 			err:         err,
@@ -74,6 +77,7 @@ func (et *ErrorTemplate) Wrap(err error) *Error {
 
 	return &Error{
 		metadata:    et.metadata,
+		tpl:         et,
 		pureWrapper: true,
 		err:         err,
 		fields:      cloneMap(et.fields),
@@ -86,6 +90,7 @@ func (et *ErrorTemplate) Wrap(err error) *Error {
 func (et *ErrorTemplate) New() *Error {
 	return &Error{
 		metadata: et.metadata,
+		tpl:      et,
 		fields:   cloneMap(et.fields),
 		stack:    CallerFramesFunc(callerFramesSkip),
 	}

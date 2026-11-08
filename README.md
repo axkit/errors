@@ -81,6 +81,8 @@ if customer == nil {
 
 ```
 
+An error remembers the template it was created from, so `errors.Is(err, ErrInvalidInput)` is true for every error above, even after `Msg(...)` or `StatusCode(...)` changed its attributes.
+
 ## Error Structure
 
 The `Error` type is the core of this package. It encapsulates metadata, stack traces, and wrapped errors.
@@ -356,6 +358,25 @@ This ensures a consistent and observable error-handling experience across your a
 | Step 2 | Use `Template` for shared errors     | Medium             | ✅ Yes               |
 | Step 3 | Wrap external or third-party errors  | Medium             | ✅ Yes               |
 | Step 4 | Centralize and document templates    | High (but worth it)| ✅ Yes               |
+
+## AI Agents
+
+The repository contains an [Agent Skill](skills/axkit-errors/SKILL.md) with rules for idiomatic use of this package: templates, wrapping, `Is`/`As`, protected errors, logging and JSON output. Add it to a project that uses the package, so coding agents follow the same conventions.
+
+Claude Code:
+
+```bash
+mkdir -p .claude/skills/axkit-errors
+curl -sSfL https://raw.githubusercontent.com/axkit/errors/master/skills/axkit-errors/SKILL.md \
+  -o .claude/skills/axkit-errors/SKILL.md
+```
+
+Other agents: put `SKILL.md` into the agent's skills directory, or reference it from `AGENTS.md`:
+
+```markdown
+## Errors
+Use github.com/axkit/errors and follow .claude/skills/axkit-errors/SKILL.md.
+```
 
 ## License
 

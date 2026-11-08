@@ -6,6 +6,11 @@ type Error struct {
 	fields map[string]any
 	stack  []StackFrame
 
+	// tpl is the template the error was created from, nil if none.
+	// Is and As use it to match the error with its template
+	// even if Msg, StatusCode and others changed the attributes.
+	tpl *ErrorTemplate
+
 	pureWrapper bool
 	err         error
 }
@@ -85,6 +90,7 @@ func (e *Error) Wrap(err error) *Error {
 	case *ErrorTemplate:
 		return &Error{
 			metadata:    e.metadata,
+			tpl:         e.tpl,
 			fields:      cloneMap(e.fields),
 			pureWrapper: true,
 			err:         err,
@@ -93,6 +99,7 @@ func (e *Error) Wrap(err error) *Error {
 	case *Error:
 		res := Error{
 			metadata:    e.metadata,
+			tpl:         e.tpl,
 			fields:      cloneMap(e.fields),
 			pureWrapper: true,
 			err:         err,
@@ -115,6 +122,7 @@ func (e *Error) Wrap(err error) *Error {
 
 	return &Error{
 		metadata:    e.metadata,
+		tpl:         e.tpl,
 		err:         err,
 		fields:      cloneMap(e.fields),
 		pureWrapper: true,

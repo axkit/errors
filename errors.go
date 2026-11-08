@@ -122,7 +122,13 @@ func Wrap(err error, message string) *Error {
 	return &res
 }
 
-// Is checks if the error is of the same type as the target error.
+// Is reports whether any error in err's chain matches target.
+//
+// An *Error matches an *ErrorTemplate if it was created from the template
+// by New or Wrap, even if Msg, StatusCode and others changed its attributes,
+// or if all attributes (message, severity, status code, code, protected) are equal.
+// Two *Error values match if they are the same, were created from the same
+// template or have equal attributes. Other errors are compared as by the standard errors.Is.
 func Is(err error, target error) bool {
 	if err == target {
 		return true
@@ -149,11 +155,11 @@ func is(e *Error, target error) bool {
 		if t.pureWrapper {
 			return is(e, t.err)
 		}
-		if e.metadata.equal(t.metadata) || e == t {
+		if e == t || e.metadata.equal(t.metadata) || sameTemplate(e, t) {
 			return true
 		}
 	case *ErrorTemplate:
-		if t.metadata.equal(e.metadata) {
+		if e.tpl == t || t.metadata.equal(e.metadata) {
 			return true
 		}
 	default:
@@ -174,7 +180,12 @@ func is(e *Error, target error) bool {
 	return se.Is(e.err, target)
 }
 
-// As checks if the error can be cast to a target type.
+// As finds the first error in err's chain that matches target, and if one is found,
+// sets target to that error value and returns true.
+//
+// If target is a pointer to a nil *Error, any *Error matches. If it points to
+// a non-nil *Error, the error must match it by the rules of Is.
+// Other targets are handled as by the standard errors.As.
 func As(err error, target any) bool {
 	if err == nil {
 		return false
@@ -210,7 +221,7 @@ func as(e *Error, target any) bool {
 			return true
 		}
 
-		if e.metadata.equal((*t).metadata) || e == *t {
+		if e == *t || e.metadata.equal((*t).metadata) || sameTemplate(e, *t) {
 			*t = e
 			return true
 		}
@@ -233,6 +244,11 @@ func as(e *Error, target any) bool {
 	}
 
 	return se.As(e, target)
+}
+
+// sameTemplate reports whether both errors were created from the same template.
+func sameTemplate(a, b *Error) bool {
+	return a.tpl != nil && a.tpl == b.tpl
 }
 
 func cloneMap(m map[string]any) map[string]any {

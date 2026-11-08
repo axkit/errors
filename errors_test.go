@@ -343,3 +343,62 @@ func TestWrapChain(t *testing.T) {
 		}
 	})
 }
+
+func TestIsByTemplate(t *testing.T) {
+	tpl := Template("invalid input").Code("CRM-0901").StatusCode(400)
+	twin := Template("invalid input").Code("CRM-0901").StatusCode(400)
+	other := Template("other").Code("OTH")
+
+	tests := []struct {
+		name   string
+		err    error
+		target error
+		want   bool
+	}{
+		{"New().Msg", tpl.New().Msg("empty email"), tpl, true},
+		{"New().StatusCode", tpl.New().StatusCode(422), tpl, true},
+		{"New().Code().Severity()", tpl.New().Code("X").Severity(Critical), tpl, true},
+		{"Wrap().Msg", tpl.Wrap(io.EOF).Msg("x"), tpl, true},
+		{"Wrap of changed error", other.Wrap(tpl.New().Msg("x")), tpl, true},
+		{"package Wrap of changed error", Wrap(tpl.New().Msg("x"), "ctx"), tpl, true},
+		{"fmt wrapper of changed error", fmt.Errorf("ctx: %w", tpl.New().Msg("x")), tpl, true},
+		{"instance Wrap keeps template", tpl.New().Msg("x").Wrap(io.EOF), tpl, true},
+		{"two changed instances", tpl.New().Msg("a"), tpl.New().Msg("b"), true},
+		{"twin template by attributes", tpl.New(), twin, true},
+		{"twin template after Msg", tpl.New().Msg("x"), twin, false},
+		{"other template", tpl.New().Msg("x"), other, false},
+		{"instances of different templates", tpl.New().Msg("x"), other.New(), false},
+		{"error without template", &Error{metadata: metadata{message: "x"}}, tpl, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Is(tt.err, tt.target); got != tt.want {
+				t.Errorf("Is() = %v, want %v", got, tt.want)
+			}
+			if got := se.Is(tt.err, tt.target); got != tt.want {
+				t.Errorf("std errors.Is() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAsByTemplate(t *testing.T) {
+	tpl := Template("invalid input").Code("CRM-0901")
+	other := Template("other")
+	src := tpl.New().Msg("empty email")
+
+	t.Run("same template", func(t *testing.T) {
+		target := tpl.New()
+		if !As(fmt.Errorf("ctx: %w", src), &target) || target != src {
+			t.Errorf("expected source error, got %+v", target)
+		}
+	})
+
+	t.Run("other template", func(t *testing.T) {
+		target := other.New()
+		if As(src, &target) {
+			t.Error("expected false")
+		}
+	})
+}
