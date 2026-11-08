@@ -1,7 +1,9 @@
 package errors
 
 import (
+	se "errors"
 	"fmt"
+	"io"
 	"os"
 	"testing"
 )
@@ -194,5 +196,150 @@ func TestAs(t *testing.T) {
 			}
 		}()
 		As(err, &pe)
+	})
+}
+
+func TestAsNilTarget(t *testing.T) {
+	src := Template("test error").Code("C1").New()
+
+	t.Run("direct", func(t *testing.T) {
+		var target *Error
+		if !As(src, &target) {
+			t.Fatal("expected true, got false")
+		}
+		if target != src {
+			t.Errorf("expected target to be the source error")
+		}
+	})
+
+	t.Run("through fmt.Errorf", func(t *testing.T) {
+		var target *Error
+		if !As(fmt.Errorf("ctx: %w", src), &target) {
+			t.Fatal("expected true, got false")
+		}
+		if target != src {
+			t.Errorf("expected target to be the source error")
+		}
+	})
+}
+
+func TestStdErrorsCompatibility(t *testing.T) {
+	tpl := Template("not found").Code("NF")
+	other := Template("other").Code("OT")
+	pathErr := &os.PathError{Op: "open", Path: "/x", Err: os.ErrNotExist}
+
+	t.Run("Unwrap", func(t *testing.T) {
+		e := tpl.Wrap(io.EOF)
+		if e.Unwrap() != io.EOF {
+			t.Errorf("expected io.EOF, got %v", e.Unwrap())
+		}
+		if (&Error{}).Unwrap() != nil {
+			t.Error("expected nil for error without wrapped error")
+		}
+	})
+
+	t.Run("std Is finds template through fmt.Errorf", func(t *testing.T) {
+		err := fmt.Errorf("ctx: %w", tpl.New())
+		if !se.Is(err, tpl) {
+			t.Error("expected true, got false")
+		}
+		if se.Is(err, other) {
+			t.Error("expected false for other template")
+		}
+		if !Is(err, tpl) {
+			t.Error("package Is: expected true, got false")
+		}
+	})
+
+	t.Run("std Is finds wrapped std error", func(t *testing.T) {
+		err := fmt.Errorf("ctx: %w", tpl.Wrap(io.EOF))
+		if !se.Is(err, io.EOF) {
+			t.Error("expected true, got false")
+		}
+	})
+
+	t.Run("std Is finds inner template", func(t *testing.T) {
+		err := other.Wrap(tpl.New())
+		if !se.Is(err, tpl) {
+			t.Error("expected true, got false")
+		}
+	})
+
+	t.Run("As finds std error inside Error", func(t *testing.T) {
+		err := tpl.Wrap(pathErr)
+		var target *os.PathError
+		if !As(err, &target) || target != pathErr {
+			t.Errorf("package As: expected %v, got %v", pathErr, target)
+		}
+		target = nil
+		if !se.As(err, &target) || target != pathErr {
+			t.Errorf("std As: expected %v, got %v", pathErr, target)
+		}
+	})
+}
+
+func TestWrapChain(t *testing.T) {
+	errNotFound := Template("record not found").Code("DB-404").StatusCode(404)
+	errUserLoad := Template("failed to load user").Code("USR-500").StatusCode(500)
+
+	t.Run("template, template, package Wrap", func(t *testing.T) {
+		e1 := errNotFound.Wrap(io.EOF)
+		e2 := errUserLoad.Wrap(e1)
+		e3 := Wrap(e2, "handle request")
+
+		want := "handle request: failed to load user: record not found: EOF"
+		if e3.Error() != want {
+			t.Errorf("Error() = %q, want %q", e3.Error(), want)
+		}
+		if e3.code != "USR-500" || e3.statusCode != 500 {
+			t.Errorf("expected metadata of the wrapped error, got code=%q status=%d", e3.code, e3.statusCode)
+		}
+		if !Is(e3, errUserLoad) || !Is(e3, errNotFound) || !Is(e3, io.EOF) {
+			t.Error("expected all errors of the chain to match")
+		}
+	})
+
+	t.Run("package Wrap three times", func(t *testing.T) {
+		w := Wrap(Wrap(Wrap(io.EOF, "read header"), "parse config"), "start app")
+		want := "start app: parse config: read header: EOF"
+		if w.Error() != want {
+			t.Errorf("Error() = %q, want %q", w.Error(), want)
+		}
+	})
+
+	t.Run("wrapped error is not modified", func(t *testing.T) {
+		inner := errNotFound.New().Set("id", 1)
+		before := *inner
+		outer := Wrap(inner, "outer").Set("id", 2).Set("extra", true)
+
+		if inner.message != before.message || inner.pureWrapper != before.pureWrapper || inner.err != before.err {
+			t.Errorf("inner error was modified: %+v", inner)
+		}
+		if len(inner.fields) != 1 || inner.fields["id"] != 1 {
+			t.Errorf("inner fields were modified: %v", inner.fields)
+		}
+		if outer.fields["id"] != 2 {
+			t.Errorf("expected outer field id=2, got %v", outer.fields["id"])
+		}
+	})
+
+	t.Run("keeps original stack", func(t *testing.T) {
+		inner := errNotFound.New()
+		if outer := Wrap(inner, "outer"); &outer.stack[0] != &inner.stack[0] {
+			t.Error("expected the stack of the wrapped error")
+		}
+	})
+
+	t.Run("inherits protected flag", func(t *testing.T) {
+		if !Wrap(Template("sql").Protected(true).New(), "load").protected {
+			t.Error("expected protected flag to be inherited")
+		}
+	})
+
+	t.Run("nil *Error", func(t *testing.T) {
+		var e *Error
+		if w := Wrap(e, "msg"); w.message != "msg" {
+			t.Errorf("unexpected result: %+v", w)
+		}
 	})
 }

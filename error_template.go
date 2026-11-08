@@ -47,7 +47,7 @@ func (et *ErrorTemplate) Wrap(err error) *Error {
 			fields:      cloneMap(et.fields),
 			pureWrapper: true,
 			err:         err,
-			stack:       DefaultCallerFrames(3),
+			stack:       CallerFramesFunc(callerFramesSkip),
 		}
 	case *Error:
 		res := Error{
@@ -59,7 +59,7 @@ func (et *ErrorTemplate) Wrap(err error) *Error {
 		if x.stack != nil {
 			res.stack = x.stack
 		} else {
-			res.stack = DefaultCallerFrames(3)
+			res.stack = CallerFramesFunc(callerFramesSkip)
 		}
 		if len(x.fields) > 0 {
 			if res.fields == nil {
@@ -77,7 +77,7 @@ func (et *ErrorTemplate) Wrap(err error) *Error {
 		pureWrapper: true,
 		err:         err,
 		fields:      cloneMap(et.fields),
-		stack:       DefaultCallerFrames(3),
+		stack:       CallerFramesFunc(callerFramesSkip),
 	}
 }
 
@@ -87,7 +87,7 @@ func (et *ErrorTemplate) New() *Error {
 	return &Error{
 		metadata: et.metadata,
 		fields:   cloneMap(et.fields),
-		stack:    CallerFramesFunc(1),
+		stack:    CallerFramesFunc(callerFramesSkip),
 	}
 }
 

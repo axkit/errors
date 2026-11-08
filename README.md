@@ -55,7 +55,7 @@ var (
 							StatusCode(500).
 							Severity(errors.Critical)
 
-	// Predefined error gets `Tiny` severity  by default.
+	// Severity is `Unknown` unless set.
 	ErrInvalidFilter = errors.Template("invalid filtering rule").
 							Code("CRM-0042").
 							StatusCode(400)
@@ -101,11 +101,41 @@ A stack trace is automatically captured at the moment an error is created or fir
 
 A stack trace is captured when one of the following methods is called:
 
-- errors.TemplateError.Wrap(...)
-- errors.TemplateError.New(...)
+- errors.ErrorTemplate.New()
+- errors.ErrorTemplate.Wrap(...)
+- errors.Error.Wrap(...)
 - errors.Wrap(...)
 
+The first frame is the line that called one of these methods.
+
 > Rewrapping an error does not overwrite an existing stack trace. The original call site remains preserved, ensuring consistent and reliable debugging information.
+
+Each frame is written to JSON as `{"func": "...", "file": "/path/to/file.go:42"}`. The `file:line` format lets VS Code and most terminals open the file on click. In Go code the line number is also available as `StackFrame.Line`.
+
+Use `WithStopStackOn("fasthttp")` to cut the stack at the first frame of a library you are not interested in.
+
+## Wrapping Chain
+
+Every wrap keeps the previous error in the chain. `Error()` returns the messages of all levels, as usual in Go, while JSON writes each level separately:
+
+```go
+e1 := ErrNotFound.Wrap(sql.ErrNoRows)          // "record not found", code DB-404
+e2 := ErrUserLoad.Wrap(e1)                      // "failed to load user", code USR-500
+e3 := errors.Wrap(e2, "handle GET /users/42")
+
+e3.Error()
+// handle GET /users/42: failed to load user: record not found: sql: no rows in result set
+
+errors.ToJSON(e3, errors.WithAttributes(errors.AddWrappedErrors))
+// {"msg":"handle GET /users/42","severity":"unknown","code":"USR-500","wrapped":[
+//   {"msg":"failed to load user","severity":"unknown","code":"USR-500"},
+//   {"msg":"record not found","severity":"unknown","code":"DB-404"},
+//   {"msg":"sql: no rows in result set","severity":"unknown"}]}
+```
+
+`errors.Wrap(err, msg)` adds context and inherits code, status code, severity, protected flag, fields and stack of the wrapped error. `Template.Wrap(err)` sets the template's attributes instead.
+
+`*errors.Error` implements `Unwrap()` and `Is()`, so the standard `errors.Is` and `errors.As` work with it, including errors wrapped by `fmt.Errorf("...: %w", err)`.
 
 ## Error Logging
 
@@ -126,18 +156,58 @@ if err != nil && errors.Is(err, repo.ErrNotFound) {
     return nil, ErrInvalidObjectID.Wrap(err).Set("customerId", customerID)
 }
 
+// main.go: the client gets the full JSON in development only
+clientFormat := errors.ClientOutputFormat
+if cfg.Env == "dev" {
+	clientFormat = errors.ClientDebugOutputFormat
+}
+
 // customer_controller.go
 customer, err := service.CustomerByID(customerID)
 if err != nil {
-	buf := errors.ToJSON(err, errors.WithAttributes(errors.AddStack|errors.AddWrappedErrors))
-	
 	// server output (extended)
-	log.Println(string(buf))
-	
-	// client output (reduced)
-	buf = errors.ToJSON(err)
+	log.Println(string(errors.ToJSON(err, errors.WithAttributes(errors.ServerOutputFormat))))
+
+	// client output (reduced in production)
+	w.Write(errors.ToJSON(err, errors.WithAttributes(clientFormat)))
 }
 ```
+
+### Serialization Rules
+
+`ToJSON` and `Serialize` write the message, severity, code and status code. Other parts are written only if requested with `WithAttributes(...)`:
+
+| Rule               | Adds                                                   |
+|--------------------|--------------------------------------------------------|
+| `AddFields`        | `fields`: values set by `Set(...)`                     |
+| `AddStack`         | `stack`: call frames                                   |
+| `AddWrappedErrors` | `wrapped`: errors below the top-level one              |
+| `AddProtected`     | protected errors in `wrapped`                          |
+| `IndentJSON`       | indented output                                        |
+
+Predefined sets:
+
+| Set                       | Rules                                                          |
+|---------------------------|----------------------------------------------------------------|
+| `ServerOutputFormat`      | `AddFields \| AddStack \| AddWrappedErrors \| AddProtected`      |
+| `ServerDebugOutputFormat` | `ServerOutputFormat \| IndentJSON`                              |
+| `ClientDebugOutputFormat` | same as `ServerOutputFormat`                                   |
+| `ClientOutputFormat`      | none                                                           |
+
+`WithRootLevelFields([]string{"requestId"})` moves the listed fields to the root of the JSON object. They are written even without `AddFields`.
+
+### Protected Errors
+
+Mark internal errors, such as database or network errors, with `Protected(true)`. Without `AddProtected` they are skipped in `wrapped`, so they get to the server log but not to the client:
+
+```go
+var ErrSQL = errors.Template("pq: relation users does not exist").Code("DB-001").Protected(true)
+var ErrProfile = errors.Template("cannot load profile").Code("PRF-500").StatusCode(500)
+
+err := ErrProfile.Wrap(ErrSQL.Wrap(dbErr))
+```
+
+A protected error should not be the top-level one: its message is written as is. Wrap it with a public template before returning it to the client. Note that `errors.Wrap(err, msg)` keeps the protected flag of `err`.
 
 ### Custom JSON Serialization
 
@@ -145,26 +215,30 @@ If you need to implement a custom JSON serializer, the `errors.Serialize(err)` m
 
 ## Alarm Notifications
 
-Set an alarmer to notify on critical errors: 
+Set an alarmer to notify on critical errors:
 
 ```go
 type CustomAlarmer struct{}
 
-func (c *CustomAlarmer) Alarm(se *SerializedError) {
+func (c *CustomAlarmer) Alarm(err error) {
     fmt.Println("Critical error:", err)
 }
 
 errors.SetAlarmer(&CustomAlarmer{})
 
-var ErrConsistencyFailed = errors.Template("data consistency failed").Severity(errors.Critical) 
+var ErrConsistencyFailed = errors.Template("data consistency failed").Severity(errors.Critical)
 
-// CustomAlarmer.Alarm() will be invocated automatically (severity=Critical)
-return ErrDataseConnectionFailure.New()
+// CustomAlarmer.Alarm() is called by Error.Alarm().
+err := ErrConsistencyFailed.New()
+err.Alarm()
+return err
 ```
+
+The alarmer is also called if `ToJSON` fails to marshal an error.
 
 ## Severity Levels
 
-The package classifies errors into three severity levels:
+The package classifies errors into three severity levels. A template without `Severity(...)` has the `Unknown` level.
 
 - **Tiny**: Minor issues, typically validation errors.
 - **Medium**: Regular errors that log stack traces.

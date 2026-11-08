@@ -1,8 +1,8 @@
 package errors
 
-// Alarmer is an interface wrapping a single method Alarm
+// Alarmer is an interface wrapping a single method Alarm.
 //
-// Alarm is invocated automatically when critical error is caught,
+// Alarm is called by Error.Alarm and when ToJSON fails to marshal an error,
 // if alarmer is set.
 type Alarmer interface {
 	Alarm(err error)
@@ -10,7 +10,7 @@ type Alarmer interface {
 
 var alarmer Alarmer
 
-// SetAlarmer sets Alarmer implementation to be used when critical error is caught.
+// SetAlarmer sets Alarmer implementation to be used by Error.Alarm and ToJSON.
 func SetAlarmer(a Alarmer) {
 	alarmer = a
 }

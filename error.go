@@ -29,6 +29,19 @@ func (e *Error) Error() string {
 	return res
 }
 
+// Unwrap returns the wrapped error, so the standard errors.Is and errors.As
+// can walk the chain.
+func (e *Error) Unwrap() error {
+	return e.err
+}
+
+// Is reports whether the error matches target using the same rules as the package Is.
+// It lets the standard errors.Is match templates through other wrappers,
+// for example fmt.Errorf("...: %w", err).
+func (e *Error) Is(target error) bool {
+	return is(e, target)
+}
+
 // WrappedErrors returns a slice of all wrapped errors, including the current one if it's not a pure wrapper.
 func (err *Error) WrappedErrors() []Error {
 	var res []Error
@@ -75,7 +88,7 @@ func (e *Error) Wrap(err error) *Error {
 			fields:      cloneMap(e.fields),
 			pureWrapper: true,
 			err:         err,
-			stack:       DefaultCallerFrames(3),
+			stack:       CallerFramesFunc(callerFramesSkip),
 		}
 	case *Error:
 		res := Error{
@@ -87,7 +100,7 @@ func (e *Error) Wrap(err error) *Error {
 		if x.stack != nil {
 			res.stack = x.stack
 		} else {
-			res.stack = DefaultCallerFrames(3)
+			res.stack = CallerFramesFunc(callerFramesSkip)
 		}
 		if len(x.fields) > 0 {
 			if res.fields == nil {
@@ -105,7 +118,7 @@ func (e *Error) Wrap(err error) *Error {
 		err:         err,
 		fields:      cloneMap(e.fields),
 		pureWrapper: true,
-		stack:       DefaultCallerFrames(3),
+		stack:       CallerFramesFunc(callerFramesSkip),
 	}
 }
 

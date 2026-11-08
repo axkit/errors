@@ -65,28 +65,31 @@ func New(msg string) error {
 
 // Wrap wraps an existing error with a new message, effectively creating
 // a new error that includes the previous error.
+//
+// If err is an *Error or *ErrorTemplate, the new error inherits its severity,
+// status code, code, protected flag, fields and stack trace. The wrapped error
+// stays in the chain, so Error() returns "message: <err.Error()>".
+// The wrapped error itself is not modified.
 func Wrap(err error, message string) *Error {
-	var res Error
+	res := Error{err: err}
 
-	if err != nil {
-		res.err = err
-		switch x := err.(type) {
-		case *Error:
-			res = *x
-			x.pureWrapper = false
-		case *ErrorTemplate:
+	switch x := err.(type) {
+	case *Error:
+		if x != nil {
 			res.metadata = x.metadata
 			res.fields = cloneMap(x.fields)
-		case error:
-			break
-		default:
-			break
+			res.stack = x.stack
+		}
+	case *ErrorTemplate:
+		if x != nil {
+			res.metadata = x.metadata
+			res.fields = cloneMap(x.fields)
 		}
 	}
 
 	res.message = message
 	if len(res.stack) == 0 {
-		res.stack = CallerFramesFunc(1)
+		res.stack = CallerFramesFunc(callerFramesSkip)
 	}
 
 	return &res
@@ -174,6 +177,12 @@ func as(e *Error, target any) bool {
 
 	switch t := target.(type) {
 	case **Error:
+		// A nil target matches any *Error, as the standard errors.As does.
+		if *t == nil {
+			*t = e
+			return true
+		}
+
 		if e.metadata.equal((*t).metadata) || e == *t {
 			*t = e
 			return true
