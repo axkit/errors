@@ -199,51 +199,72 @@ func As(err error, target any) bool {
 		panic("axkit/errors: target must be a non-nil pointer")
 	}
 
-	if e, ok := err.(*Error); ok {
-		return as(e, target)
-	}
-
 	if _, ok := err.(*ErrorTemplate); ok {
 		panic("axkit/errors: error cannot be a pointer to a ErrorTemplate")
+	}
+
+	// A non-nil *Error target is a filter: only a matching error is returned.
+	if t, ok := target.(**Error); ok && *t != nil {
+		if m := findMatch(err, *t); m != nil {
+			*t = m
+			return true
+		}
+		return false
+	}
+
+	if e, ok := err.(*Error); ok {
+		return as(e, target)
 	}
 
 	return se.As(err, target)
 }
 
-// as assists the As function in casting errors to the target type, accounting for wrapped errors.
+// as assists the As function when err is an *Error.
 func as(e *Error, target any) bool {
-
 	switch t := target.(type) {
 	case **Error:
 		// A nil target matches any *Error, as the standard errors.As does.
-		if *t == nil {
-			*t = e
-			return true
-		}
-
-		if e == *t || e.metadata.equal((*t).metadata) || sameTemplate(e, *t) {
-			*t = e
-			return true
-		}
-
-		if e.err == nil {
-			return false
-		}
-
-		switch x := e.err.(type) {
-		case *Error:
-			return as(x, target)
-		case *ErrorTemplate:
-			if e.metadata.equal(x.metadata) {
-				*t = (*x).toError()
-				return true
-			}
-		}
+		// A non-nil target is handled by As.
+		*t = e
+		return true
 	case **ErrorTemplate, *ErrorTemplate:
 		panic("axkit/errors: target cannot be a pointer to a PredefinedError")
 	}
 
 	return se.As(e, target)
+}
+
+// findMatch returns the first error in the err tree that matches filter:
+// the same error, an error of the same template or with equal attributes.
+// It walks *Error chains, Unwrap() error and Unwrap() []error.
+func findMatch(err error, filter *Error) *Error {
+	switch x := err.(type) {
+	case nil:
+		return nil
+	case *Error:
+		if x == nil {
+			return nil
+		}
+		if x == filter || x.metadata.equal(filter.metadata) || sameTemplate(x, filter) {
+			return x
+		}
+		return findMatch(x.err, filter)
+	case *ErrorTemplate:
+		if x != nil && (x == filter.tpl || x.metadata.equal(filter.metadata)) {
+			return x.toError()
+		}
+		return nil
+	case interface{ Unwrap() []error }:
+		for _, e := range x.Unwrap() {
+			if m := findMatch(e, filter); m != nil {
+				return m
+			}
+		}
+		return nil
+	case interface{ Unwrap() error }:
+		return findMatch(x.Unwrap(), filter)
+	}
+	return nil
 }
 
 // sameTemplate reports whether both errors were created from the same template.

@@ -402,3 +402,44 @@ func TestAsByTemplate(t *testing.T) {
 		}
 	})
 }
+
+func TestAsFilter(t *testing.T) {
+	errX := Template("x").Code("X")
+	errOther := Template("other").Code("O")
+
+	tests := []struct {
+		name    string
+		err     error
+		filter  *ErrorTemplate
+		want    bool
+		wantMsg string
+	}{
+		{"other template, std error in chain", errX.Wrap(io.EOF), errOther, false, ""},
+		{"other template, no std error", errX.New(), errOther, false, ""},
+		{"other template through fmt", fmt.Errorf("ctx: %w", errX.New()), errOther, false, ""},
+		{"other template in join", Join(io.EOF, errX.New()), errOther, false, ""},
+		{"same template, std error in chain", errX.Wrap(io.EOF), errX, true, "x"},
+		{"same template after Msg", errX.New().Msg("changed"), errX, true, "changed"},
+		{"same template through fmt", fmt.Errorf("ctx: %w", errX.New()), errX, true, "x"},
+		{"same template in join", Join(io.EOF, errOther.New(), errX.New()), errX, true, "x"},
+		{"inner error", errOther.Wrap(errX.Wrap(io.EOF)), errX, true, "x"},
+		{"wrapped template", errOther.Wrap(errX), errX, true, "x"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			target := tt.filter.New()
+			before := target
+			got := As(tt.err, &target)
+			if got != tt.want {
+				t.Fatalf("As() = %v, want %v", got, tt.want)
+			}
+			if !got && target != before {
+				t.Error("target must not be changed when there is no match")
+			}
+			if got && target.message != tt.wantMsg {
+				t.Errorf("target message = %q, want %q", target.message, tt.wantMsg)
+			}
+		})
+	}
+}
