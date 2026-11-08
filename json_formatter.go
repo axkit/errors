@@ -2,7 +2,6 @@ package errors
 
 import (
 	"encoding/json"
-	se "errors"
 	"strings"
 
 	"github.com/tidwall/sjson"
@@ -189,19 +188,25 @@ func serializeWrapped(err error, addProtected bool) []SerializedError {
 	return res
 }
 
-// hasProtected reports whether the error chain contains a protected error.
+// hasProtected reports whether the error tree contains a protected error.
+// It walks both Unwrap() error and Unwrap() []error, e.g. errors.Join.
 func hasProtected(err error) bool {
-	var e *Error
-	for err != nil {
-		if se.As(err, &e) {
-			if e.protected {
+	switch x := err.(type) {
+	case nil:
+		return false
+	case *Error:
+		return x != nil && (x.protected || hasProtected(x.err))
+	case *ErrorTemplate:
+		return x != nil && x.protected
+	case interface{ Unwrap() []error }:
+		for _, e := range x.Unwrap() {
+			if hasProtected(e) {
 				return true
 			}
-			err = e.err
-			continue
 		}
-		var t *ErrorTemplate
-		return se.As(err, &t) && t.protected
+		return false
+	case interface{ Unwrap() error }:
+		return hasProtected(x.Unwrap())
 	}
 	return false
 }

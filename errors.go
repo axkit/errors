@@ -63,6 +63,33 @@ func New(msg string) error {
 	return se.New(msg)
 }
 
+// ErrUnsupported is the standard errors.ErrUnsupported, so errors.Is
+// works the same with both packages.
+var ErrUnsupported = se.ErrUnsupported
+
+// Unwrap returns the result of calling the Unwrap method on err, if err's
+// type contains an Unwrap method returning error. Otherwise, Unwrap returns nil.
+// It is the standard errors.Unwrap.
+func Unwrap(err error) error {
+	return se.Unwrap(err)
+}
+
+// Join returns an error that wraps the given errors. Nil errors are discarded.
+// Join returns nil if every value in errs is nil.
+// It is the standard errors.Join.
+func Join(errs ...error) error {
+	return se.Join(errs...)
+}
+
+// AsType finds the first error in err's chain that matches the type E,
+// and if one is found, returns that error value and true.
+// It works the same way as As and mirrors errors.AsType added in Go 1.26.
+func AsType[E error](err error) (E, bool) {
+	var target E
+	ok := As(err, &target)
+	return target, ok
+}
+
 // Wrap wraps an existing error with a new message, effectively creating
 // a new error that includes the previous error.
 //

@@ -295,7 +295,7 @@ with:
 import "github.com/axkit/errors"
 ```
 
-This change is non-breaking: errors.New(...)  remains available and behaves the same way, returning a basic error without stack trace. This allows your application to compile and function as before.
+This change is non-breaking: the package provides the whole API of the standard `errors` package — `New`, `Is`, `As`, `Unwrap`, `Join`, `ErrUnsupported` and `AsType` (Go 1.26). `New`, `Unwrap`, `Join` and `ErrUnsupported` are the standard ones, `errors.New(...)` returns a basic error without stack trace. `Is`, `As` and `AsType` also understand templates. This allows your application to compile and function as before.
 
 
 #### Step 2: Identify and Replace Static Errors with Templates
